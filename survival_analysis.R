@@ -23,27 +23,32 @@ data_surv <- table_surv |>
   ) |>
   pivot_wider(
     names_from = type,
-    values_from = value
+    values_from = value,
+    values_fn = list
   ) |>
   unnest(c(deaths, event)) |>
   drop_na()
 
 # Plot survival
-km_fit <- survfit(Surv(deaths, event) ~ condition, data = data_surv)
+conds <- paste(c("Water", "0"), collapse = "|")
+
+data_surv_set <- data_surv |> filter(str_detect(condition, conds))
+
+km_fit <- survfit(Surv(deaths, event) ~ condition, data = data_surv_set)
 
 surv_plot <- ggsurvplot(
-    km_fit,
-    data = data_surv,
-    pval = TRUE,
-    legend.title = "",
-    legend.labs = levels(factor(data_surv$condition))
-    )
+  km_fit,
+  data = data_surv,
+  pval = TRUE,
+  legend.title = "",
+  legend.labs = levels(factor(data_surv_set$condition))
+)
 # Save plot
 ggsave_workaround <- function(g){
-    survminer:::.build_ggsurvplot(x = g,
-                                  surv.plot.height = NULL,
-                                  risk.table.height = NULL,
-                                  ncensor.plot.height = NULL)
+  survminer:::.build_ggsurvplot(x = g,
+                                surv.plot.height = NULL,
+                                risk.table.height = NULL,
+                                ncensor.plot.height = NULL)
 }
 
 g_to_save <- ggsave_workaround(surv_plot)
