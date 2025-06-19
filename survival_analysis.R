@@ -1,17 +1,28 @@
 library(tidyverse)
+library(readxl)
 library(survival)
 library(survminer)
 
 # Get surv data file
 setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
 
-path_surv <- list.files("data", pattern = "pred_deaths_worm", full.names = TRUE)
+path_surv <- list.files("data", pattern = "survival", full.names = TRUE)
 
 # Load table with proper headers
 headers <- read.csv(path_surv, nrows = 2, header = FALSE)
 headers <- sapply(headers, paste, collapse = "_")
 table_surv <- read.csv(file = path_surv, skip = 2, header = FALSE)
 names(table_surv) <- substr(headers, 11, 100)
+
+# Load table, fix headers
+table_surv <- read_excel(path_surv, col_names = FALSE) |> select(-1)
+
+headers_x <- table_surv[1,] |> unlist(use.names = FALSE) |> zoo::na.locf()
+headers_y <- rep(c("deaths", "event"), times = length(headers_x) / 2)
+headers <- paste(headers_x, headers_y, sep = "_")
+
+table_surv <- table_surv |> slice(4:nrow(table_surv))
+names(table_surv) <- headers
 
 # Sort data to plot
 data_surv <- table_surv |>
@@ -29,8 +40,11 @@ data_surv <- table_surv |>
   unnest(c(deaths, event)) |>
   drop_na()
 
+data_surv$event <- as.numeric(data_surv$event)
+data_surv$deaths <- as.numeric(data_surv$deaths)
+
 # Plot survival
-conds <- paste(c("Water", "0"), collapse = "|")
+conds <- paste(c("Water", "250"), collapse = "|")
 
 data_surv_set <- data_surv |> filter(str_detect(condition, conds))
 
