@@ -3,7 +3,7 @@ library(tidyverse)
 # Get motility data file
 setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
 
-path_mot <- list.files("data", pattern = "motility_analysis_raw_scaled_per_day_only-alive", full.names = TRUE)
+path_mot <- list.files("old_data", pattern = "motility_analysis_raw_scaled_per_day_only-alive", full.names = TRUE)
 
 # Load table
 table_mot <- read.csv(file = path_mot, header = TRUE) |> select(-alive)

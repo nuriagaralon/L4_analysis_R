@@ -8,13 +8,13 @@ setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
 
 path_surv <- list.files("data", pattern = "survival", full.names = TRUE)
 
-# Load table with proper headers
-headers <- read.csv(path_surv, nrows = 2, header = FALSE)
-headers <- sapply(headers, paste, collapse = "_")
-table_surv <- read.csv(file = path_surv, skip = 2, header = FALSE)
-names(table_surv) <- substr(headers, 11, 100)
+# Load old table, add headers
+# headers <- read.csv(path_surv, nrows = 2, header = FALSE)
+# headers <- sapply(headers, paste, collapse = "_")
+# table_surv <- read.csv(file = path_surv, skip = 2, header = FALSE)
+# names(table_surv) <- substr(headers, 11, 100)
 
-# Load table, fix headers
+# Load new table, fix headers
 table_surv <- read_excel(path_surv, col_names = FALSE) |> select(-1)
 
 headers_x <- table_surv[1,] |> unlist(use.names = FALSE) |> zoo::na.locf()
@@ -44,19 +44,32 @@ data_surv$event <- as.numeric(data_surv$event)
 data_surv$deaths <- as.numeric(data_surv$deaths)
 
 # Plot survival
-conds <- paste(c("Water", "250"), collapse = "|")
+conds <- paste(c("Water", "S-medium"), collapse = "|")
 
 data_surv_set <- data_surv |> filter(str_detect(condition, conds))
 
 km_fit <- survfit(Surv(deaths, event) ~ condition, data = data_surv_set)
 
+# This calculates p-values and plots ONLY what is filtered through conds
 surv_plot <- ggsurvplot(
   km_fit,
-  data = data_surv,
+  data = data_surv_set,
+  conf.int = TRUE,
   pval = TRUE,
   legend.title = "",
   legend.labs = levels(factor(data_surv_set$condition))
 )
+
+# This calculates p-values with everything, and plots conds
+surv_plot_all <- ggsurvplot(
+  km_fit,
+  data = data_surv,
+  conf.int = TRUE,
+  pval = TRUE,
+  legend.title = "",
+  legend.labs = levels(factor(data_surv_set$condition))
+)
+
 # Save plot
 ggsave_workaround <- function(g){
   survminer:::.build_ggsurvplot(x = g,

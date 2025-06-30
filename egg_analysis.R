@@ -7,7 +7,7 @@ library(ggsignif)
 setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
 
 # Using general raw data:
-path_testegg <- list.files("data", pattern = "egg_features", full.names = TRUE)
+path_testegg <- list.files("old_data", pattern = "egg_features", full.names = TRUE)
 table_testegg <- read.csv(file = path_testegg, header = TRUE)
 table_testegg <- table_testegg |> select(-exp_id, -class) |> drop_na()
 
@@ -23,7 +23,7 @@ eggs <- table_testegg |>
 # So we need to combine all conditions
 
 # Get all egg files in one table, with condition column added
-path_egg <- list.files("data/egg_stats", full.names = TRUE)
+path_egg <- list.files("old_data/egg_stats", full.names = TRUE)
 
 # Read all files into a list of data frames
 table_egg_list <- lapply(path_egg, function(file){
@@ -36,6 +36,23 @@ table_egg_list <- lapply(path_egg, function(file){
 table_egg <- do.call(rbind, table_egg_list) |>
   mutate(condition = as.factor(condition))
 
+# New eggs:
+path_egg <- list.files("data", pattern = "eggs_condition", full.names = TRUE)
+path_egg_raw <- list.files("data", pattern = "eggs_raw", full.names = TRUE)
+
+table_egg_emerg <- read_excel(path_egg, col_names = FALSE, sheet = 1)
+table_egg_count <- read_excel(path_egg, col_names = FALSE, sheet = 2)
+table_egg_raw <- read_excel(path_egg_raw, col_names = TRUE)
+
+# Fix egg_emerg
+headers_x <- table_egg_emerg[1,] |> select(-1) |> unlist(use.names = FALSE) |> zoo::na.locf()
+headers_y <- table_egg_emerg[2,] |> select(-1) |> unlist(use.names = FALSE)
+headers <- paste(headers_x, headers_y, sep = "_")
+
+table_egg_emerg <- table_egg_emerg |> slice(4:nrow(table_egg_emerg)) |> column_to_rownames("...1")
+names(table_egg_emerg) <- headers
+
+# slice(table_egg_emerg, 2) to get the hours, and slice 1 to get the steps.
 
 # Multiple One-way ANOVAS
 # But do we want to check interactions between start/end/eggs_per_worm?
