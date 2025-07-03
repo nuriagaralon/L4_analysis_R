@@ -15,14 +15,21 @@ path_surv <- list.files("data", pattern = "survival", full.names = TRUE)
 # names(table_surv) <- substr(headers, 11, 100)
 
 # Load new table, fix headers
-table_surv <- read_excel(path_surv, col_names = FALSE) |> select(-1)
 
-headers_x <- table_surv[1,] |> unlist(use.names = FALSE) |> zoo::na.locf()
-headers_y <- rep(c("time", "event"), times = length(headers_x) / 2)
-headers <- paste(headers_x, headers_y, sep = "_")
+all_tables <- map(path_surv, function(path){
+  table_surv <- read_excel(path, col_names = FALSE) |> select(-1)
 
-table_surv <- table_surv |> slice(4:nrow(table_surv))
-names(table_surv) <- headers
+  headers_x <- table_surv[1, ] |> unlist(use.names = FALSE) |> zoo::na.locf()
+  headers_y <- rep(c("time", "event"), times = length(headers_x) / 2)
+  headers <- paste(headers_x, headers_y, sep = "_")
+
+  table_surv <- table_surv |> slice(4:nrow(table_surv))
+  names(table_surv) <- headers
+
+  table_surv
+})
+
+table_surv <- bind_rows(all_tables)
 
 # Sort data to plot
 data_surv <- table_surv |>
