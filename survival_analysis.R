@@ -47,24 +47,21 @@ all_tables <- map(path_surv, function(path){
 
 # Check if the replicates (files in path_surv) are pool-able
 # by a survival log-rank test (if p > 0.05, they are similar enough)
-control <- c("Water", "N2")
+
 if(length(path_surv) > 1){
-  cont_tab <- map2(all_tables, seq_along(all_tables), function(table, num){
-    tab <- table |> select(contains(control[1])) |> select(contains(control[2]))
-    tab <- tab |> setNames(paste0(num, names(tab)))
-    tab
-  })
 
-  max_rows <- max(map_int(cont_tab, nrow))
+# Always first what comes first. Since control is
+# N2 | OP50 100 % | Water 10 %, we match N2 first
+  control <- paste(c("N2", "Water"), collapse = ".*")
 
-  cont_tab <- map(cont_tab, function(df){
-    if(nrow(df) < max_rows){
-      df[(nrow(df) + 1):max_rows, ] <- NA
-    }
-    df
-  })
+  cont_tab <- map2(all_tables, str_extract(basename(path_surv), "^[^_]+_"),
+                   function(table, id){
+                     tab <- table |> select(matches(control))
+                     tab <- tab |> setNames(paste0(id, names(tab)))
+                     tab
+                   })
 
-  cont_tab <- bind_cols(cont_tab)
+  cont_tab <- bind_rows(cont_tab)
   data_con <- surv_pivot(cont_tab)
   cont_lrt <- survdiff(Surv(time, event) ~ condition, data = data_con)
 
