@@ -77,6 +77,8 @@ if(length(path_surv) > 1){
     print(control_plot)
     stop(paste("Replicates are too different, LRT pvalue =", cont_lrt$pvalue))
   }
+} else if (length(path_surv < 1)) {
+   stop("There is no suitable survival file.")
 }
 
 # bind rows

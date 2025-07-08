@@ -6,18 +6,27 @@ library(ggsignif)
 #
 setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
 
-# Using general raw data:
-path_testegg <- list.files("old_data", pattern = "egg_features", full.names = TRUE)
-table_testegg <- read.csv(file = path_testegg, header = TRUE)
-table_testegg <- table_testegg |> select(-exp_id, -class) |> drop_na()
+# General raw data is confusing so we are using the data
+# per channel (when using channels as replicates),
+# per experiment (when using experiments as replicates)
+path_egg <- list.files("data", pattern = "eggs_channel", full.names = TRUE)
 
-eggs <- table_testegg |>
-  filter(object_count >= 1) |>
-  group_by(chip, channel, chamber, condition, step) |>
-  summarise(avg_object_count = mean(object_count), .groups = "drop") |>
-  group_by(chip, channel, chamber, condition) |>
-  summarise(eggs_per_worm = sum(avg_object_count), .groups = "drop")
+# Load tables, fix headers
 
+table_egg_start <- read_excel(path_egg, sheet = )
+
+all_tables <- map(path_surv, function(path){
+  table_surv <- read_excel(path, col_names = FALSE) |> select(-1)
+
+  headers_x <- table_surv[1, ] |> unlist(use.names = FALSE) |> zoo::na.locf()
+  headers_y <- rep(c("time", "event"), times = length(headers_x) / 2)
+  headers <- paste(headers_x, headers_y, sep = "_")
+
+  table_surv <- table_surv |> slice(4:nrow(table_surv))
+  names(table_surv) <- headers
+
+  table_surv
+})
 
 # Start and end are not showing up in the general raw data
 # So we need to combine all conditions

@@ -10,9 +10,15 @@ setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
 
 path_gro <- list.files("data", pattern = "growth_filtered_raw", full.names = TRUE)
 
+if(length(path_gro) < 1){
+  stop("There is no suitable growth file.")
+}
 # Load excel
-table_gro <- read_excel(path_gro, col_names = TRUE) |> select(1:11)
+table_gro <- map(path_gro, function(path){
+  read_excel(path, col_names = TRUE) |> select(1:11)
+})
 
+table_gro <- bind_rows(table_gro)
 
 # Sort data to plot
 t0 <- table_gro |>
@@ -24,8 +30,10 @@ t0 <- table_gro |>
 data_gro <- full_join(table_gro, t0, suffix = c("", ".t0avg"), by = join_by(exp_id, condition))
 
 # From here it is treating chip-channel as a replicate. Needs to be checked.
-data_gro <- data_gro |>
-  mutate(chip_channel = map2_chr(chip, channel, ~ paste(.x, .y, sep="_"))) |>
+
+if(length(path_gro) > 1){
+  data_gro <- data_gro |>
+  mutate(rep_id = map2_chr(exp_id, condition, ~ paste(.x, .y, sep="_"))) |>
   mutate(day = ceiling(time / (60 * 60 * 24))) |>
   mutate(hour = ceiling(time / (60 * 60))) |>
   mutate(h_nr = time / (60 * 60)) |>
@@ -33,17 +41,38 @@ data_gro <- data_gro |>
          area.t0norm = area / area.t0avg,
          volume.t0norm = volume / volume.t0avg
   ) |>
-  select(exp_id, condition, step, time, day, hour, h_nr, chip_channel,
+  select(condition, step, time, day, hour, h_nr, rep_id,
     length, length.t0norm,
     area, area.t0norm,
     volume, volume.t0norm
     )
+  replicate <- "Modelled using experiment as replicate."
+}else if (length(path_gro) == 1) {
+  data_gro <- data_gro |>
+  mutate(rep_id = map2_chr(chip, channel, ~ paste(.x, .y, sep="_"))) |>
+  mutate(day = ceiling(time / (60 * 60 * 24))) |>
+  mutate(hour = ceiling(time / (60 * 60))) |>
+  mutate(h_nr = time / (60 * 60)) |>
+  mutate(length.t0norm = length / length.t0avg,
+         area.t0norm = area / area.t0avg,
+         volume.t0norm = volume / volume.t0avg
+  ) |>
+  select(condition, step, time, day, hour, h_nr, rep_id,
+    length, length.t0norm,
+    area, area.t0norm,
+    volume, volume.t0norm
+    )
+  replicate <- "Modelled using chip-channel as replicate."
+}
+
+data_gro <- data_gro |> filter(!str_detect(condition, "FUdR"))
 
 data_gro$condition <- factor(data_gro$condition)
-#data_gro$condition <- substr(data_gro$condition, 11, 100)
-#data_gro$condition <- str_replace(data_gro$condition, "\\?", "\U03BC")
+data_gro$rep_id <- factor(data_gro$rep_id)
 
-# Function to fit logistic growth and plot
+
+
+# Functions to fit logistic growth and plot
 
 growth_sigmoid <- function(dataset, column){
   # 1. Group and summarize data
@@ -75,9 +104,11 @@ growth_sigmoid <- function(dataset, column){
           fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
           r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
       )
-  
+  fit_column
   # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
-  
+}
+
+plot_sigmoid <- function(fit_column){
   # 3. Unnest and plot
   plot_column <- fit_column |>
     select(condition, data, fitted) |>
@@ -92,21 +123,25 @@ growth_sigmoid <- function(dataset, column){
 }
 
 # Use the function to plot area, length, volume
-area_ggplot <- growth_sigmoid(data_gro, area.t0norm)
+area_data <- growth_sigmoid(data_gro, area.t0norm)
+area_ggplot <- plot_sigmoid(area_data)
 area_plotly <- ggplotly(area_ggplot)
 
-length_ggplot <- growth_sigmoid(data_gro, length.t0norm)
+
+length_data <- growth_sigmoid(data_gro, length.t0norm)
+length_ggplot <- plot_sigmoid(length_data)
 length_plotly <- ggplotly(length_ggplot)
 
-volume_ggplot <- growth_sigmoid(data_gro, volume.t0norm)
+volume_data <- growth_sigmoid(data_gro, volume.t0norm)
+volume_ggplot <- plot_sigmoid(volume_data)
 volume_plotly <- ggplotly(volume_ggplot)
 
 htmlwidgets::saveWidget(as_widget(area_plotly), "results/area.html")
 
-# Compare models by comparing AUC (treating channels as biological replicates)
+# Compare models by comparing AUC
 # 1. Get data summary by *time*, not *hour* for more accuracy
 AUC_summ <- data_gro |>
-    group_by(condition, chip_channel, time, h_nr) |>
+    group_by(condition, rep_id, time, h_nr) |>
     summarise(
         mean = mean(area.t0norm),
         sd = sd(area.t0norm),
@@ -116,7 +151,7 @@ AUC_summ <- data_gro |>
 
 # 2. Calculate trapezoidal function
 AUC_area <- AUC_summ |>
-  group_by(condition, chip_channel) |>
+  group_by(condition, rep_id) |>
   arrange(time, .by_group = TRUE) |>
   summarise(
     AUC = trapz(time, mean)
@@ -147,7 +182,7 @@ AUC_dnt
 # Compare models by comparing model parameters (treating channels as biological replicates)
 # 1. Fit NLS for each replicate
 fit_charea <- AUC_summ |>
-    group_by(condition, chip_channel) |>
+    group_by(condition, rep_id) |>
     nest() |>
     mutate(
         A_start = map_dbl(data, ~ max(.x$mean, na.rm = TRUE)),
@@ -182,7 +217,7 @@ fit_charea <- fit_charea |>
 
 params_area <- fit_charea |>
   mutate(params = map(model, ~ as_tibble(as.list(coef(.x))))) |>
-  select(condition, chip_channel, params) |>
+  select(condition, rep_id, params) |>
   unnest(params)
 
 # A = maximum value = plateau
@@ -212,7 +247,7 @@ C_area_dnt
 
 #nlme
 # data_gro <- data_gro |>
-#   mutate(subject = map2_chr(condition, chip_channel, ~ paste(.x, .y, sep = ".")))
+#   mutate(subject = map2_chr(condition, rep_id, ~ paste(.x, .y, sep = ".")))
 # 
 # start_values <- fit_area |>
 #   select(condition, model) |>
