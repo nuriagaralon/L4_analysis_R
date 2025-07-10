@@ -5,8 +5,6 @@ library(survminer)
 library(plotly)
 
 # Get surv data file
-setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
-
 path_surv <- list.files("data", pattern = "survival", full.names = TRUE)
 
 # Pivot function
@@ -52,7 +50,7 @@ if(length(path_surv) > 1){
 
 # Always first what comes first. Since control is
 # N2 | OP50 100 % | Water 10 %, we match N2 first
-  control <- paste(c("N2", "Water"), collapse = ".*")
+  control <- paste(c("N2", "OP50 100", "Water"), collapse = ".*")
 
   cont_tab <- map2(all_tables, str_extract(basename(path_surv), "^[^_]+_"),
                    function(table, id){

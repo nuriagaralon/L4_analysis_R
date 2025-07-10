@@ -3,9 +3,6 @@ library(readxl)
 library(DescTools)
 library(ggsignif)
 
-#
-setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
-
 # General raw data is confusing so we are using the data
 # per channel (when using channels as replicates),
 # per experiment (when using experiments as replicates)

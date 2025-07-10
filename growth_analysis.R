@@ -6,8 +6,6 @@ library(DescTools)
 #library(nlme)
 
 # Get growth data file
-setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
-
 path_gro <- list.files("data", pattern = "growth_filtered_raw", full.names = TRUE)
 
 if(length(path_gro) < 1){

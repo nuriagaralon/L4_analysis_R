@@ -1,8 +1,6 @@
 library(tidyverse)
 
 # Get motility data file
-setwd("C:\\Users\\ngarriga\\Documents\\SydLab-One\\L4_analysis_R")
-
 path_mot <- list.files("old_data", pattern = "motility_analysis_raw_scaled_per_day_only-alive", full.names = TRUE)
 
 # Load table
