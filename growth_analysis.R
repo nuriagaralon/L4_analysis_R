@@ -1,17 +1,26 @@
+# Growth analysis for L4 Nagi data
+# Run everything IN ORDER except what is marked as [O], which means optional
+# [CUSTOM] means that the line can be changed to suit conditions or controls
+# in the experiment
+
+# Load necessary libraries
 library(tidyverse)
 library(readxl)
 library(plotly)
 library(pracma)
 library(DescTools)
-#library(nlme)
+#library(nlme) #[O], explained later
 
 # Get growth data file
+# Takes all files in the folder data/ which contain "growth_filtered_raw" in the name
 path_gro <- list.files("data", pattern = "growth_filtered_raw", full.names = TRUE)
 
 if(length(path_gro) < 1){
   stop("There is no suitable growth file.")
 }
-# Load excel
+
+# Load excel file
+# Selects only area, volume, length (and not eccentricity, orientation, etc.)
 table_gro <- map(path_gro, function(path){
   read_excel(path, col_names = TRUE) |> select(1:11)
 })
@@ -19,6 +28,9 @@ table_gro <- map(path_gro, function(path){
 table_gro <- bind_rows(table_gro)
 
 # Sort data to plot
+
+# Takes the value at t0 of each condition for normalizing the data
+# (separated by experiment ID, but channels together, which might need change)
 t0 <- table_gro |>
   filter(step < 7) |>
   select(-chip, -channel, -chamber, -step, -time, -worm_id) |>
@@ -27,8 +39,8 @@ t0 <- table_gro |>
 
 data_gro <- full_join(table_gro, t0, suffix = c("", ".t0avg"), by = join_by(exp_id, condition))
 
-# From here it is treating chip-channel as a replicate. Needs to be checked.
-
+# Normalization, select needed columns, add replicate ID.
+# If more than one file, replicate ID is the experiment ID+condition
 if(length(path_gro) > 1){
   data_gro <- data_gro |>
   mutate(rep_id = map2_chr(exp_id, condition, ~ paste(.x, .y, sep="_"))) |>
@@ -45,6 +57,7 @@ if(length(path_gro) > 1){
     volume, volume.t0norm
     )
   replicate <- "Modelled using experiment as replicate."
+# If only one file, replicate ID is the chip_channel combination
 }else if (length(path_gro) == 1) {
   data_gro <- data_gro |>
   mutate(rep_id = map2_chr(chip, channel, ~ paste(.x, .y, sep="_"))) |>
@@ -63,14 +76,16 @@ if(length(path_gro) > 1){
   replicate <- "Modelled using chip-channel as replicate."
 }
 
+# [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
 data_gro <- data_gro |> filter(!str_detect(condition, "FUdR"))
 
+#Sets condition and replicate ID as factors, needed for statistics
 data_gro$condition <- factor(data_gro$condition)
 data_gro$rep_id <- factor(data_gro$rep_id)
 
 
-
 # Functions to fit logistic growth and plot
+# We are using summarized data per each hour
 
 growth_sigmoid <- function(dataset, column){
   # 1. Group and summarize data
