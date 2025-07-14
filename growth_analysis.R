@@ -28,7 +28,6 @@ table_gro <- map(path_gro, function(path){
 table_gro <- bind_rows(table_gro)
 
 # Sort data to plot
-
 # Takes the value at t0 of each condition for normalizing the data
 # (separated by experiment ID, but channels together, which might need change)
 t0 <- table_gro |>
@@ -79,13 +78,14 @@ if(length(path_gro) > 1){
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
 data_gro <- data_gro |> filter(!str_detect(condition, "FUdR"))
 
-#Sets condition and replicate ID as factors, needed for statistics
+# Sets condition and replicate ID as factors, needed for statistics
 data_gro$condition <- factor(data_gro$condition)
 data_gro$rep_id <- factor(data_gro$rep_id)
 
 
 # Functions to fit logistic growth and plot
-# We are using summarized data per each hour
+# We are using summarized data per each hour, as all data points would be
+# Very confusing and very full
 
 growth_sigmoid <- function(dataset, column){
   # 1. Group and summarize data
@@ -113,12 +113,28 @@ growth_sigmoid <- function(dataset, column){
                       start = list(A = A, B = B, C = C)),
                   error = function(e) NULL
               )
+          }))
+  # 2.5. If there is a model with NULL, recalculate C_start (mean of C_starts that worked) and try again
+  value_for_c <- fit_column |> filter(!map_lgl(model, is.null)) |> pull(C_start) |> mean(na.rm = TRUE)
+
+  fit_column <- fit_column |>
+    mutate(
+      C_start = if_else(map_lgl(model, is.null), value_for_c, C_start),
+      model = pmap(list(model, data, A_start, B_start, C_start), function(m, df, A, B, C){
+              if (is.null(m)) {
+              tryCatch(
+                  nls(mean ~ A / (1 + exp(-B * (hour - C))),
+                      data = df,
+                      start = list(A = A, B = B, C = C)),
+                  error = function(e) NULL
+              )} else {m}
           }),
-          fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
-          r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
-      )
+      fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
+
+      # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
+      r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
+    )
   fit_column
-  # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
 }
 
 plot_sigmoid <- function(fit_column){
@@ -129,30 +145,34 @@ plot_sigmoid <- function(fit_column){
   
   column_ggplot <- ggplot(plot_column, aes(x = hour, y = mean, color = condition)) + 
     geom_point(size = 1) +
-    geom_line(aes(y = fitted))
+    geom_line(aes(y = fitted)) + 
+    xlab("Time (hour)")
     #theme_minimal() +
     #geom_errorbar(aes(x=hour,ymin=mean-sd, ymax=mean+sd, color = condition))
   column_ggplot
 }
 
-# Use the function to plot area, length, volume
+# Use the functions to plot area, length, volume, and save plotly
 area_data <- growth_sigmoid(data_gro, area.t0norm)
-area_ggplot <- plot_sigmoid(area_data)
+area_ggplot <- plot_sigmoid(area_data) + ylab("Area (A. U.)")
 area_plotly <- ggplotly(area_ggplot)
-
-
-length_data <- growth_sigmoid(data_gro, length.t0norm)
-length_ggplot <- plot_sigmoid(length_data)
-length_plotly <- ggplotly(length_ggplot)
-
-volume_data <- growth_sigmoid(data_gro, volume.t0norm)
-volume_ggplot <- plot_sigmoid(volume_data)
-volume_plotly <- ggplotly(volume_ggplot)
 
 htmlwidgets::saveWidget(as_widget(area_plotly), "results/area.html")
 
-# Compare models by comparing AUC
-# 1. Get data summary by *time*, not *hour* for more accuracy
+length_data <- growth_sigmoid(data_gro, length.t0norm)
+length_ggplot <- plot_sigmoid(length_data) + ylab("Length (A. U.)")
+length_plotly <- ggplotly(length_ggplot)
+
+htmlwidgets::saveWidget(as_widget(length_plotly), "results/length.html")
+
+volume_data <- growth_sigmoid(data_gro, volume.t0norm)
+volume_ggplot <- plot_sigmoid(volume_data) + ylab("Volume (A. U.)")
+volume_plotly <- ggplotly(volume_ggplot)
+
+htmlwidgets::saveWidget(as_widget(volume_plotly), "results/volume.html")
+
+# Compare models:
+# Get data summary by *time*, not *hour* for more accuracy
 AUC_summ <- data_gro |>
     group_by(condition, rep_id, time, h_nr) |>
     summarise(
@@ -212,7 +232,10 @@ fit_charea <- AUC_summ |>
 
 # REDO NULL MODELS, IF IT DOES NOT WORK, INSTEAD OF C_START = 40,
 # CHECK ALL VALUES AND PUT AN AVERAGE
-value_for_c <- 40
+value_for_c <- fit_charea |>
+  filter(!map_lgl(model, is.null)) |>
+  pull(C_start) |>
+  mean(na.rm = TRUE)
 
 fit_charea <- fit_charea |>
   mutate(
