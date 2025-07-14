@@ -1,3 +1,9 @@
+# Survival analysis for L4 Nagi data
+# Run everything IN ORDER except what is marked as [O], which means optional
+# [CUSTOM] means that the line can be changed to suit conditions or controls
+# in the experiment
+
+# Load necessary libraries
 library(tidyverse)
 library(readxl)
 library(survival)
@@ -5,9 +11,16 @@ library(survminer)
 library(plotly)
 
 # Get surv data file
+# Takes all files in the folder data/ which contain "survival" in the name
 path_surv <- list.files("data", pattern = "survival", full.names = TRUE)
 
+if(length(path_surv) < 1){
+  stop("There is no suitable survival file.")
+}
+
 # Pivot function
+# Transforms data from [condition1_time, condition1_event, condition2_time, ...]
+# to [condition, time, event]
 surv_pivot <- function(surv_data){
   surv_table <- surv_data |>
     pivot_longer(
@@ -28,7 +41,10 @@ surv_pivot <- function(surv_data){
   surv_table
 }
 
-# Load new table, fix headers
+# Load excel files, fix headers
+# Loads each survival file in a table, contained as a list in all_tables
+# Cleans data so it has headers and it is in the format
+# [condition1_time, condition1_event, condition2_time, condition2_event, ...]
 
 all_tables <- map(path_surv, function(path){
   table_surv <- read_excel(path, col_names = FALSE) |> select(-1)
@@ -43,15 +59,20 @@ all_tables <- map(path_surv, function(path){
   table_surv
 })
 
-# Check if the replicates (files in path_surv) are pool-able
+# Check if the biological replicates (files in path_surv) are pool-able
 # by a survival log-rank test (if p > 0.05, they are similar enough)
 
+# Only check if there is more than one file
 if(length(path_surv) > 1){
 
-# Always first what comes first. Since control is
-# N2 | OP50 100 % | Water 10 %, we match N2 first
-  control <- paste(c("N2", "OP50 100", "Water"), collapse = ".*")
+  # Set the control (or condition to be compared)
+  # Using paste with collapse ".*" we match a regular expression.
+  # We need to match first what comes first. Since control is
+  # N2 | OP50 100 % | Water 10 %, we match N2, OP50 100, and Water, in that order
+  control <- paste(c("N2", "OP50 100", "Water"), collapse = ".*") # [CUSTOM]
 
+  # Takes the experiment ID from the file name (expID_survival...)
+  # from the beginning up until and including the first _
   cont_tab <- map2(all_tables, str_extract(basename(path_surv), "^[^_]+_"),
                    function(table, id){
                      tab <- table |> select(matches(control))
@@ -59,10 +80,13 @@ if(length(path_surv) > 1){
                      tab
                    })
 
+  # Combines all tables from cont_tab into one, uses surv_pivot function
+  # explained above, and conducts Log-Rank test
   cont_tab <- bind_rows(cont_tab)
   data_con <- surv_pivot(cont_tab)
   cont_lrt <- survdiff(Surv(time, event) ~ condition, data = data_con)
 
+  # Stop if log-rank test is significant
   if(cont_lrt$pvalue < 0.05){
     control_plot <- ggsurvplot(
       survfit(Surv(time, event) ~ condition, data = data_con),
@@ -79,52 +103,75 @@ if(length(path_surv) > 1){
    stop("There is no suitable survival file.")
 }
 
-# bind rows
-table_surv <- bind_rows(all_tables)
+# [O] If log rank test was significant and it did not print the control_plot
+# It can be printed by uncommenting and running the following line
+# control_plot
 
-# Plot survival
+# Combines all tables from all_tables into one, uses surv_pivot function
+table_surv <- bind_rows(all_tables)
 data_surv <- surv_pivot(table_surv)
 
-conds <- paste(c("Water", "S-medium"), collapse = "|")
-
-data_surv_set <- data_surv |> filter(str_detect(condition, conds))
-
+# Plot survival: Kaplan-Meier and Log-rank test
+# Test and plot ALL conditions
 km_fit <- survfit(Surv(time, event) ~ condition,
                   data = data_surv, conf.type = "log")
 
-km_fit_set <- survfit(Surv(time, event) ~ condition,
-                      data = data_surv_set, conf.type = "log")
-
-# This calculates p-values and plots ONLY what is filtered through conds
-surv_plot_set <- ggsurvplot(
-  km_fit_set,
-  data = data_surv_set,
-  conf.int = TRUE,
-  pval = TRUE,
-  xlab = "Time (hour)",
-  legend.title = "",
-  legend.labs = levels(factor(data_surv_set$condition))
-)
-
-# p-values with everything, and plots everything.
 surv_plot_all <- ggsurvplot(
   km_fit,
   data = data_surv,
-  conf.int = FALSE,
+  conf.int = FALSE, # [CUSTOM] Set to TRUE for confidence intervals
   conf.int.style = "step",
-  pval = TRUE,
-  xlab = "Time (hour)",
-  legend.title = "",
+  pval = TRUE, # [CUSTOM] Change to FALSE to not display p-value
+  xlab = "Time (hour)", # [CUSTOM] Change to change the x axis label
+  legend.title = "", # [CUSTOM] Change to change the legend title
   legend.labs = levels(factor(data_surv$condition)),
-  palette = "viridis"
+  #palette = "igv" # [CUSTOM] Change colors
 )
 
 surv_plotly <- ggplotly(surv_plot_all[[1]])
 
+# Fix labels messed up by the palette
+legend_labels <- levels(factor(data_surv$condition))
+
+# Rename traces (this assumes one trace per group, typical in KM plots)
+for (i in seq_along(legend_labels)) {
+  surv_plotly$x$data[[i]]$name <- legend_labels[i]
+  surv_plotly$x$data[[i]]$legendgroup <- legend_labels[i]
+  surv_plotly$x$data[[i]]$hovertemplate <- sub("^.*?<extra>", paste0(legend_labels[i], "<extra>"), surv_plotly$x$data[[i]]$hovertemplate)
+}
+
+# [O] To see the plots, execute the following lines
+surv_plot_all # For the regular ggplot
+surv_plotly # For the plotly plot
+
+# Save plotly plot as html
 htmlwidgets::saveWidget(as_widget(surv_plotly), "results/survival.html")
 
 
-# Save plot
+# [O] This calculates p-values and plots ONLY what is filtered through conds
+# conds must include all conditions we want in the plot, order does not matter
+# If we have "PLA 100" and "PLA 200" and we add PLA to conds, it takes both
+conds <- paste(c("Water", "S-medium", "PLA"), collapse = "|")
+
+data_surv_set <- data_surv |> filter(str_detect(condition, conds))
+
+km_fit_set <- survfit(Surv(time, event) ~ condition,
+                      data = data_surv_set, conf.type = "log")
+
+surv_plot_set <- ggsurvplot(
+  km_fit_set,
+  data = data_surv_set,
+  conf.int = TRUE, # [CUSTOM] Set to FALSE for no confidence intervals
+  pval = TRUE, # [CUSTOM] Change to FALSE to not display p-value
+  xlab = "Time (hour)", # [CUSTOM] Change to change the x axis label
+  legend.title = "", # [CUSTOM] Change to change the legend title
+  legend.labs = levels(factor(data_surv_set$condition))
+)
+
+# [O] To see the plot
+surv_plot_set
+
+# [O] Save plot of the set of conds
 ggsave_workaround <- function(g){
   survminer:::.build_ggsurvplot(x = g,
                                 surv.plot.height = NULL,
