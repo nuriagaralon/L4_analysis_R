@@ -8,7 +8,6 @@ library(tidyverse)
 library(readxl)
 library(plotly)
 library(pracma)
-library(rstatix)
 library(DescTools)
 library(ggpubr)
 library(ggsci)
@@ -176,7 +175,9 @@ htmlwidgets::saveWidget(as_widget(volume_plotly), "results/volume.html")
 
 # Compare conditions statistically
 sig_pval <- 0.05
-control_name <- str_subset(unique(data_gro$condition), "Water")
+condition_levels <- levels(data_gro$condition)
+control <- condition_levels[str_detect(condition_levels, "Water")]
+options(width = 1000)
 
 # Get data summary by *time*, not *hour* for more accuracy
 # Use scaled time so the numbers are smaller and modeling finds them
@@ -220,46 +221,73 @@ normality_AUC <- function(growth_AUC_data){
   ggarrange(hi, qq)
 }
 
-# Area
+save_normality_AUC <- function(growth_AUC_data, growth_var){
+  growth_plot <- normality_AUC(growth_AUC_data)
+  ggsave(filename = paste0("results/", growth_var, "_normality_AUC.png"), plot = growth_plot,
+       width = 17, height = 15, dpi = 1000, units = "cm")
+}
+
+# Area, length, volume
 area_summ <- growth_summary(data_gro, area.t0norm)
 area_AUC <- growth_AUC(area_summ)
-area_normality_AUC <- normality_AUC(area_AUC)
+# area_normality_AUC <- normality_AUC(area_AUC)
 
-ggsave(filename = "results/area_normality_AUC.png", plot = area_normality_AUC,
-       width = 17, height = 15, dpi = 1000, units = "cm")
-
-sink("results/growth_area.txt")
-cat(replicate)
-cat("\n\nTest AUC:\n")
-cat("Check normality:\n")
-a <- shapiro.test(area_AUC$AUC)
-
-if(a$p.value < sig_pval){
-  cat("Data distribution not normal. Please check area_normality_AUC.png to use ANOVA results.\n")
-}
-
-AUC_welchaov <- area_AUC |> welch_anova_test(AUC ~ condition)
-
-print(AUC_welchaov, n = Inf)
-
-  AUC_gh <- area_AUC |> games_howell_test(AUC ~ condition)
-
-print(AUC_gh, n = Inf) #maybe csv
-
-if (AUC_welchaov$p < sig_pval){
-    AUC_gh <- area_AUC |> games_howell_test(AUC ~ condition)
-
-} else {
-  cat("\nNo significant results from Welch's ANOVA. No post-hoc test performed.\n")
-}
-
-sink()
-
-# Length
 length_summ <- growth_summary(data_gro, length.t0norm)
+length_AUC <- growth_AUC(length_summ)
+# length_normality_AUC <- normality_AUC(length_AUC)
 
-# Volume
 volume_summ <- growth_summary(data_gro, volume.t0norm)
+volume_AUC <- growth_AUC(volume_summ)
+# volume_normality_AUC <- normality_AUC(volume_AUC)
+
+# Sink results
+growth_list <- list(
+  area   = area_AUC,
+  length = length_AUC,
+  volume = volume_AUC
+)
+
+for(growth_var in names(growth_list)){
+  df <- growth_list[[growth_var]]
+
+  # Normality plot: save to file
+  save_normality_AUC(df, growth_var)
+
+  # Sink results
+  sink(paste0("results/growth_", growth_var, ".txt"))
+  cat(replicate)
+  cat("\n\nTest AUC:\n")
+  cat("Check normality:\n")
+  shap <- shapiro.test(df$AUC)
+
+  if(shap$p.value < sig_pval){
+    cat("Data distribution not normal. Please check assumptions at ")
+    cat(growth_var)
+    cat("_normality_AUC.png to use ANOVA results.\n")
+    cat("Otherwise, here is a Kruskal-Wallis test:\n") #kruskal wallis post hoc?
+    AUC_kwt <- kruskal.test(AUC ~ condition, data = df)
+    print(AUC_kwt)
+  }
+
+  cat("One-way ANOVA summary:\n\n")
+  AUC_anova <- aov(AUC ~ condition, data = df)
+  print(summary(AUC_anova))
+  
+
+  if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] > sig_pval){
+    cat("\nResults from Dunnet's test:\n")
+    AUC_dnt <- DunnettTest(AUC ~ condition, data = df, control = control)
+    print(AUC_dnt)
+    cat("\nResults from Tukey's test:\n")
+    AUC_thsd <- TukeyHSD(AUC_anova)
+    print(AUC_thsd)
+  } else {
+    cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
+  }
+
+  sink()
+
+}
 
 
 # 4. ANOVA and Dunnett test
