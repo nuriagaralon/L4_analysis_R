@@ -8,7 +8,10 @@ library(tidyverse)
 library(readxl)
 library(plotly)
 library(pracma)
+library(rstatix)
 library(DescTools)
+library(ggpubr)
+library(ggsci)
 #library(nlme) #[O], explained later
 
 # Get growth data file
@@ -145,10 +148,10 @@ plot_sigmoid <- function(fit_column){
   
   column_ggplot <- ggplot(plot_column, aes(x = hour, y = mean, color = condition)) + 
     geom_point(size = 1) +
-    geom_line(aes(y = fitted)) + 
-    xlab("Time (hour)")
-    #theme_minimal() +
-    #geom_errorbar(aes(x=hour,ymin=mean-sd, ymax=mean+sd, color = condition))
+    geom_line(aes(y = fitted), linewidth = 1) +
+    xlab("Time (hour)") +
+    theme_minimal() +
+    scale_color_igv()
   column_ggplot
 }
 
@@ -171,36 +174,93 @@ volume_plotly <- ggplotly(volume_ggplot)
 
 htmlwidgets::saveWidget(as_widget(volume_plotly), "results/volume.html")
 
-# Compare models:
+# Compare conditions statistically
+sig_pval <- 0.05
+control_name <- str_subset(unique(data_gro$condition), "Water")
+
 # Get data summary by *time*, not *hour* for more accuracy
-AUC_summ <- data_gro |>
+# Use scaled time so the numbers are smaller and modeling finds them
+# And separate by rep_id (for ANOVA or Kruskal-Wallis means)
+growth_summary <- function(dataset, column){
+  dataset |>
     group_by(condition, rep_id, time, h_nr) |>
     summarise(
-        mean = mean(area.t0norm),
-        sd = sd(area.t0norm),
-        n = n(),
-        .groups = "drop"
+      mean = mean({{column}}),
+      sd = sd({{column}}),
+      n = n(),
+      .groups = "drop"
     )
+}
 
-# 2. Calculate trapezoidal function
-AUC_area <- AUC_summ |>
-  group_by(condition, rep_id) |>
-  arrange(time, .by_group = TRUE) |>
-  summarise(
-    AUC = trapz(time, mean)
-  )
+# Comparison 1: AUC
+## Calculate trapezoidal function
+growth_AUC <- function(growth_summ_data){
+  growth_summ_data |>
+    group_by(condition, rep_id) |>
+    arrange(time, .by_group = TRUE) |>
+    summarise(AUC = trapz(time, mean)) |>
+    ungroup()
+}
 
-# 3. Check normality and see
-ggplot(AUC_area, aes(x = AUC)) +
-  geom_histogram(bins = 15, fill = "skyblue", color = "black") +
-  theme_minimal()
+## Check normality and see
+normality_AUC <- function(growth_AUC_data){
+  mu <- mean(growth_AUC_data$AUC)
+  sigma <- sd(growth_AUC_data$AUC)
 
-ggplot(AUC_area, aes(sample = AUC)) +
-     stat_qq() +
-     stat_qq_line() +
-     theme_minimal()
+  hi <- ggplot(growth_AUC_data, aes(x = AUC)) +
+    geom_histogram(bins = 15, fill = "skyblue", color = "black", aes(y = after_stat(density))) +
+    stat_function(fun = dnorm, args = list(mean = mu, sd = sigma), color = "red", linewidth = 1) +
+    theme_minimal()
 
-shapiro.test(AUC_area$AUC)
+  qq <- ggplot(growth_AUC_data, aes(sample = AUC)) +
+       stat_qq() +
+       stat_qq_line() +
+       theme_minimal()
+
+  ggarrange(hi, qq)
+}
+
+# Area
+area_summ <- growth_summary(data_gro, area.t0norm)
+area_AUC <- growth_AUC(area_summ)
+area_normality_AUC <- normality_AUC(area_AUC)
+
+ggsave(filename = "results/area_normality_AUC.png", plot = area_normality_AUC,
+       width = 17, height = 15, dpi = 1000, units = "cm")
+
+sink("results/growth_area.txt")
+cat(replicate)
+cat("\n\nTest AUC:\n")
+cat("Check normality:\n")
+a <- shapiro.test(area_AUC$AUC)
+
+if(a$p.value < sig_pval){
+  cat("Data distribution not normal. Please check area_normality_AUC.png to use ANOVA results.\n")
+}
+
+AUC_welchaov <- area_AUC |> welch_anova_test(AUC ~ condition)
+
+print(AUC_welchaov, n = Inf)
+
+  AUC_gh <- area_AUC |> games_howell_test(AUC ~ condition)
+
+print(AUC_gh, n = Inf) #maybe csv
+
+if (AUC_welchaov$p < sig_pval){
+    AUC_gh <- area_AUC |> games_howell_test(AUC ~ condition)
+
+} else {
+  cat("\nNo significant results from Welch's ANOVA. No post-hoc test performed.\n")
+}
+
+sink()
+
+# Length
+length_summ <- growth_summary(data_gro, length.t0norm)
+
+# Volume
+volume_summ <- growth_summary(data_gro, volume.t0norm)
+
 
 # 4. ANOVA and Dunnett test
 AUC_anova <- aov(AUC ~ condition, data = AUC_area)
@@ -214,7 +274,7 @@ AUC_dnt
 
 # Compare models by comparing model parameters (treating channels as biological replicates)
 # 1. Fit NLS for each replicate
-fit_charea <- AUC_summ |>
+fit_charea <- summ_gro |>
     group_by(condition, rep_id) |>
     nest() |>
     mutate(
