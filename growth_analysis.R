@@ -9,6 +9,7 @@ library(readxl)
 library(plotly)
 library(pracma)
 library(DescTools)
+library(dunn.test)
 library(ggpubr)
 library(ggsci)
 #library(nlme) #[O], explained later
@@ -254,7 +255,7 @@ for(growth_var in names(growth_list)){
   save_normality_AUC(df, growth_var)
 
   # Sink results
-  sink(paste0("results/growth_", growth_var, ".txt"))
+  sink(paste0("results/growth_AUC_", growth_var, ".txt"))
   cat(replicate)
   cat("\n\nTest AUC:\n")
   cat("Check normality:\n")
@@ -263,18 +264,35 @@ for(growth_var in names(growth_list)){
   if(shap$p.value < sig_pval){
     cat("Data distribution not normal. Please check assumptions at ")
     cat(growth_var)
-    cat("_normality_AUC.png to use ANOVA results.\n")
-    cat("Otherwise, here is a Kruskal-Wallis test:\n") #kruskal wallis post hoc?
+    cat("_normality_AUC.png to use ANOVA results.\n\n")
+    cat("Otherwise, here is a Kruskal-Wallis test:\n") 
     AUC_kwt <- kruskal.test(AUC ~ condition, data = df)
     print(AUC_kwt)
+
+    if (AUC_kwt$p.value > sig_pval){ #CHANGE >
+      cat("\nResults from Dunn's test:\n")
+      # Add IDs because else you can't see in Dunn's test
+      cat("IDs of the comparisons in Dunn's test:\n")
+      df <- df |> mutate(condition_id = dense_rank(condition))
+      print(df |> select(condition, condition_id) |> distinct())
+      cat("\n")
+      AUC_dnn <- dunn.test(df$AUC, g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
+
+      # Might want to add only a comparison with the control (for better statistical power)
+      # This is done by taking the p values of AUC_dnn (AUC_dnn$p), and the comparisons (AUC_dnn$comparisons)
+      # And correcting only the p values (with p.adjust) where the comparison has the control.
+    } else {
+      cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
+    }
+
   }
 
-  cat("One-way ANOVA summary:\n\n")
+  cat("\nOne-way ANOVA summary:\n\n")
   AUC_anova <- aov(AUC ~ condition, data = df)
   print(summary(AUC_anova))
   
 
-  if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] > sig_pval){
+  if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] > sig_pval){ # CHANGE >
     cat("\nResults from Dunnet's test:\n")
     AUC_dnt <- DunnettTest(AUC ~ condition, data = df, control = control)
     print(AUC_dnt)
@@ -289,20 +307,11 @@ for(growth_var in names(growth_list)){
 
 }
 
-
-# 4. ANOVA and Dunnett test
-AUC_anova <- aov(AUC ~ condition, data = AUC_area)
-summary(AUC_anova)
-
-condition_levels <- levels(data_gro$condition)
-control <- condition_levels[str_detect(condition_levels, "Water")]
-
-AUC_dnt <- DunnettTest(AUC ~ condition, data = AUC_area, control = control)
-AUC_dnt
-
-# Compare models by comparing model parameters (treating channels as biological replicates)
+# Compare models by comparing model parameters
 # 1. Fit NLS for each replicate
-fit_charea <- summ_gro |>
+
+growth_params <- function(growth_summ_data){
+  fit_param <- growth_summ_data |>
     group_by(condition, rep_id) |>
     nest() |>
     mutate(
@@ -317,15 +326,13 @@ fit_charea <- summ_gro |>
                 error = function(e) NULL
             )
         }))
-
-# REDO NULL MODELS, IF IT DOES NOT WORK, INSTEAD OF C_START = 40,
-# CHECK ALL VALUES AND PUT AN AVERAGE
-value_for_c <- fit_charea |>
+  # If there is a model with NULL, recalculate C_start (mean of C_starts that worked) and try again
+  value_for_c <- fit_param |>
   filter(!map_lgl(model, is.null)) |>
   pull(C_start) |>
   mean(na.rm = TRUE)
-
-fit_charea <- fit_charea |>
+  
+  fit_param <- fit_param |>
   mutate(
     C_start = if_else(map_lgl(model, is.null), value_for_c, C_start),
     model = pmap(list(model, data, A_start, B_start, C_start), function(m, df, A, B, C){
@@ -338,11 +345,61 @@ fit_charea <- fit_charea |>
             )} else {m}
         })
   )
+  fit_param
+}
 
-params_area <- fit_charea |>
-  mutate(params = map(model, ~ as_tibble(as.list(coef(.x))))) |>
-  select(condition, rep_id, params) |>
-  unnest(params)
+# Extract parameters from fits
+get_params <- function(growth_param_data){
+  growth_param_data |>
+    mutate(params = map(model, ~ as_tibble(as.list(coef(.x))))) |>
+    select(condition, rep_id, params) |>
+    unnest(params)
+}
+
+# Check normality and see
+normality_params <- function(growth_params_data, param){
+  mu <- mean(growth_params_data[[param]])
+  sigma <- sd(growth_params_data[[param]])
+
+  hi <- ggplot(growth_params_data, aes(x = .data[[param]])) +
+    geom_histogram(bins = 15, fill = "skyblue", color = "black", aes(y = after_stat(density))) +
+    stat_function(fun = dnorm, args = list(mean = mu, sd = sigma), color = "red", linewidth = 1) +
+    theme_minimal()
+
+  qq <- ggplot(growth_params_data, aes(sample = .data[[param]])) +
+       stat_qq() +
+       stat_qq_line() +
+       theme_minimal()
+
+  ggarrange(hi, qq)
+}
+
+save_normality_params <- function(growth_params_data, param, growth_var){
+  growth_plot <- normality_params(growth_params_data, param)
+  ggsave(filename = paste0("results/", growth_var, "_normality_", param, ".png"), plot = growth_plot,
+       width = 17, height = 15, dpi = 1000, units = "cm")
+}
+
+# Area, length, volume
+area_params_fit <- growth_params(area_summ)
+if(any(map_lgl(area_params_fit$model, is.null))){
+  stop("One of the area models is NULL, please rerun with a different C_start (try value_for_c = 40)")
+}
+
+length_params_fit <- growth_params(length_summ)
+if(any(map_lgl(length_params_fit$model, is.null))){
+  stop("One of the length models is NULL, please rerun with a different C_start (try value_for_c = 40)")
+}
+
+volume_params_fit <- growth_params(volume_summ)
+if(any(map_lgl(volume_params_fit$model, is.null))){
+  stop("One of the volume models is NULL, please rerun with a different C_start (try value_for_c = 40)")
+}
+
+area_params <- get_params(area_params_fit)
+length_params <- get_params(length_params_fit)
+volume_params <- get_params(volume_params_fit)
+
 
 # A = maximum value = plateau
 A_area_anova <- aov(A ~ condition, data = params_area)
@@ -364,6 +421,79 @@ summary(C_area_anova)
 
 C_area_dnt <- DunnettTest(C ~ condition, data = params_area, control = control)
 C_area_dnt
+
+# Sink results
+growth_params_list <- list(
+  area   = area_params,
+  length = length_params,
+  volume = volume_params
+)
+
+for(growth_var in names(growth_params_list)){
+  df <- growth_params_list[[growth_var]]
+
+  sink(paste0("results/growth_params_", growth_var, ".txt"))
+
+  for(param in c("A", "B", "C")){
+
+    # Normality plot: save to file
+    save_normality_params(df, param, growth_var)
+
+    # Sink results
+    cat(replicate)
+    cat("\n\nTest ")
+    cat(param)
+    cat(":\nCheck normality:\n")
+    shap <- shapiro.test(df[[param]])
+
+    if(shap$p.value < sig_pval){
+      cat("Data distribution not normal. Please check assumptions at ")
+      cat(growth_var)
+      cat("_normality_AUC.png to use ANOVA results.\n\n")
+      cat("Otherwise, here is a Kruskal-Wallis test:\n") 
+      AUC_kwt <- kruskal.test(AUC ~ condition, data = df)
+      print(AUC_kwt)
+
+      if (AUC_kwt$p.value > sig_pval){ #CHANGE >
+        cat("\nResults from Dunn's test:\n")
+        # Add IDs because else you can't see in Dunn's test
+        cat("IDs of the comparisons in Dunn's test:\n")
+        df <- df |> mutate(condition_id = dense_rank(condition))
+        print(df |> select(condition, condition_id) |> distinct())
+        cat("\n")
+        AUC_dnn <- dunn.test(df$AUC, g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
+
+        # Might want to add only a comparison with the control (for better statistical power)
+        # This is done by taking the p values of AUC_dnn (AUC_dnn$p), and the comparisons (AUC_dnn$comparisons)
+        # And correcting only the p values (with p.adjust) where the comparison has the control.
+      } else {
+        cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
+      }
+
+    }
+
+    cat("\nOne-way ANOVA summary:\n\n")
+    AUC_anova <- aov(AUC ~ condition, data = df)
+    print(summary(AUC_anova))
+
+
+    if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] > sig_pval){ # CHANGE >
+      cat("\nResults from Dunnet's test:\n")
+      AUC_dnt <- DunnettTest(AUC ~ condition, data = df, control = control)
+      print(AUC_dnt)
+      cat("\nResults from Tukey's test:\n")
+      AUC_thsd <- TukeyHSD(AUC_anova)
+      print(AUC_thsd)
+    } else {
+      cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
+    }
+  }
+  sink()
+
+}
+
+
+
 
 # An nlme model or gnls model is needed for official LRT testing, but it is a lot of parameters
 # and a lot of work, and it is difficult for it to converge.
