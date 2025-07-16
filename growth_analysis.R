@@ -269,7 +269,7 @@ for(growth_var in names(growth_list)){
     AUC_kwt <- kruskal.test(AUC ~ condition, data = df)
     print(AUC_kwt)
 
-    if (AUC_kwt$p.value > sig_pval){ #CHANGE >
+    if (AUC_kwt$p.value < sig_pval){
       cat("\nResults from Dunn's test:\n")
       # Add IDs because else you can't see in Dunn's test
       cat("IDs of the comparisons in Dunn's test:\n")
@@ -292,7 +292,7 @@ for(growth_var in names(growth_list)){
   print(summary(AUC_anova))
   
 
-  if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] > sig_pval){ # CHANGE >
+  if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
     cat("\nResults from Dunnet's test:\n")
     AUC_dnt <- DunnettTest(AUC ~ condition, data = df, control = control)
     print(AUC_dnt)
@@ -343,8 +343,10 @@ growth_params <- function(growth_summ_data){
                     start = list(A = A, B = B, C = C)),
                 error = function(e) NULL
             )} else {m}
-        })
+        }),
+    fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
   )
+  fit_param$condition <- factor(fit_param$condition)
   fit_param
 }
 
@@ -353,7 +355,8 @@ get_params <- function(growth_param_data){
   growth_param_data |>
     mutate(params = map(model, ~ as_tibble(as.list(coef(.x))))) |>
     select(condition, rep_id, params) |>
-    unnest(params)
+    unnest(params) |>
+    ungroup()
 }
 
 # Check normality and see
@@ -400,28 +403,6 @@ area_params <- get_params(area_params_fit)
 length_params <- get_params(length_params_fit)
 volume_params <- get_params(volume_params_fit)
 
-
-# A = maximum value = plateau
-A_area_anova <- aov(A ~ condition, data = params_area)
-summary(A_area_anova)
-
-A_area_dnt <- DunnettTest(A ~ condition, data = params_area, control = control)
-A_area_dnt
-
-# B = growth rate = slope
-B_area_anova <- aov(B ~ condition, data = params_area)
-summary(B_area_anova)
-
-B_area_dnt <- DunnettTest(B ~ condition, data = params_area, control = control)
-B_area_dnt
-
-# C = half growth = inflection point
-C_area_anova <- aov(C ~ condition, data = params_area)
-summary(C_area_anova)
-
-C_area_dnt <- DunnettTest(C ~ condition, data = params_area, control = control)
-C_area_dnt
-
 # Sink results
 growth_params_list <- list(
   area   = area_params,
@@ -449,19 +430,21 @@ for(growth_var in names(growth_params_list)){
     if(shap$p.value < sig_pval){
       cat("Data distribution not normal. Please check assumptions at ")
       cat(growth_var)
-      cat("_normality_AUC.png to use ANOVA results.\n\n")
-      cat("Otherwise, here is a Kruskal-Wallis test:\n") 
-      AUC_kwt <- kruskal.test(AUC ~ condition, data = df)
-      print(AUC_kwt)
+      cat("_normality_")
+      cat(param)
+      cat(".png to use ANOVA results.\n\n")
+      cat("Otherwise, here is a Kruskal-Wallis test:\n")
+      param_kwt <- kruskal.test(reformulate("condition", response = param), data = df)
+      print(param_kwt)
 
-      if (AUC_kwt$p.value > sig_pval){ #CHANGE >
+      if (param_kwt$p.value < sig_pval){
         cat("\nResults from Dunn's test:\n")
         # Add IDs because else you can't see in Dunn's test
         cat("IDs of the comparisons in Dunn's test:\n")
         df <- df |> mutate(condition_id = dense_rank(condition))
         print(df |> select(condition, condition_id) |> distinct())
         cat("\n")
-        AUC_dnn <- dunn.test(df$AUC, g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
+        dnn <- dunn.test(df[[param]], g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
 
         # Might want to add only a comparison with the control (for better statistical power)
         # This is done by taking the p values of AUC_dnn (AUC_dnn$p), and the comparisons (AUC_dnn$comparisons)
@@ -473,26 +456,40 @@ for(growth_var in names(growth_params_list)){
     }
 
     cat("\nOne-way ANOVA summary:\n\n")
-    AUC_anova <- aov(AUC ~ condition, data = df)
-    print(summary(AUC_anova))
+    param_anova <- aov(reformulate("condition", response = param), data = df)
+    print(summary(param_anova))
 
 
-    if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] > sig_pval){ # CHANGE >
+    if (summary(param_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
       cat("\nResults from Dunnet's test:\n")
-      AUC_dnt <- DunnettTest(AUC ~ condition, data = df, control = control)
-      print(AUC_dnt)
+      param_dnt <- DunnettTest(reformulate("condition", response = param), data = df, control = control)
+      print(param_dnt)
       cat("\nResults from Tukey's test:\n")
-      AUC_thsd <- TukeyHSD(AUC_anova)
-      print(AUC_thsd)
+      param_thsd <- TukeyHSD(param_anova)
+      print(param_thsd)
     } else {
       cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
     }
   }
   sink()
-
 }
 
-
+# If you want, you can plot the replicates separately to see:
+# Actually this looks weird so maybe try to do hour instead of h_nr for parameters.
+# Check what to do with replicates that grow oddly.
+plot_rep_sigmoid <- function(params_fit){
+  # 3. Unnest and plot
+  plot_column <- params_fit |>
+    select(condition, data, fitted) |>
+    unnest(c(data, fitted))
+  
+  column_ggplot <- ggplot(plot_column, aes(x = h_nr, y = fitted, color = rep_id)) + 
+    geom_line()
+    xlab("Time (hour)") +
+    theme_minimal() +
+    scale_color_igv()
+  column_ggplot
+}
 
 
 # An nlme model or gnls model is needed for official LRT testing, but it is a lot of parameters
