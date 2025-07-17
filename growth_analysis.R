@@ -44,42 +44,40 @@ data_gro <- full_join(table_gro, t0, suffix = c("", ".t0avg"), by = join_by(exp_
 # Normalization, select needed columns, add replicate ID.
 # If more than one file, replicate ID is the experiment ID+condition
 if(length(path_gro) > 1){
-  data_gro <- data_gro |>
-  mutate(rep_id = map2_chr(exp_id, condition, ~ paste(.x, .y, sep="_"))) |>
-  mutate(day = ceiling(time / (60 * 60 * 24))) |>
-  mutate(hour = ceiling(time / (60 * 60))) |>
-  mutate(h_nr = time / (60 * 60)) |>
-  mutate(length.t0norm = length / length.t0avg,
-         area.t0norm = area / area.t0avg,
-         volume.t0norm = volume / volume.t0avg
-  ) |>
-  select(condition, step, time, day, hour, h_nr, rep_id,
-    length, length.t0norm,
-    area, area.t0norm,
-    volume, volume.t0norm
-    )
+  rep_cols <- c("exp_id", "condition")
   replicate <- "Modelled using experiment as replicate."
 # If only one file, replicate ID is the chip_channel combination
-}else if (length(path_gro) == 1) {
-  data_gro <- data_gro |>
-  mutate(rep_id = map2_chr(chip, channel, ~ paste(.x, .y, sep="_"))) |>
-  mutate(day = ceiling(time / (60 * 60 * 24))) |>
-  mutate(hour = ceiling(time / (60 * 60))) |>
-  mutate(h_nr = time / (60 * 60)) |>
-  mutate(length.t0norm = length / length.t0avg,
-         area.t0norm = area / area.t0avg,
-         volume.t0norm = volume / volume.t0avg
-  ) |>
-  select(condition, step, time, day, hour, h_nr, rep_id,
-    length, length.t0norm,
-    area, area.t0norm,
-    volume, volume.t0norm
-    )
+} else if (length(path_gro) == 1) {
+  rep_cols <- c("chip", "channel")
   replicate <- "Modelled using chip-channel as replicate."
 }
 
+data_gro <- data_gro |>
+  mutate(rep_id = pmap_chr(across(all_of(rep_cols)), ~ paste(..., sep="_"))) |>
+  mutate(day = ceiling(time / (60 * 60 * 24))) |>
+  mutate(hour = ceiling(time / (60 * 60))) |>
+  mutate(h_nr = time / (60 * 60)) |>
+  mutate(length.t0norm = length / length.t0avg,
+         area.t0norm = area / area.t0avg,
+         volume.t0norm = volume / volume.t0avg
+  ) |>
+  select(condition, step, time, day, hour, h_nr, rep_id,
+    length, length.t0norm,
+    area, area.t0norm,
+    volume, volume.t0norm
+  )
+
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
 data_gro <- data_gro |> filter(!str_detect(condition, "FUdR"))
+
+# Filter out from wiz file, where they starved for a weekend
+data_gro <- data_gro |>
+  filter(!(str_detect(rep_id, "wiz6YHzJUXFL") & hour >= 395))
+
+if(length(path_gro) == 1 && str_detect(path_gro, "wiz6YHzJUXFL")) {
+  data_gro <- data_gro |> filter(hour < 395)
+}
+
 
 # Sets condition and replicate ID as factors, needed for statistics
 data_gro$condition <- factor(data_gro$condition)
@@ -106,9 +104,11 @@ growth_sigmoid <- function(dataset, column){
       group_by(condition) |>
       nest() |>
       mutate(
+          # Set reasonable start values
           A_start = map_dbl(data, ~ max(.x$mean, na.rm = TRUE)),
           B_start = 0.01,
           C_start = map2_dbl(data, A_start, ~ .x$hour[which.min(abs(.x$mean - .y / 2))]),
+          # Fit the model
           model = pmap(list(data, A_start, B_start, C_start), function(df, A, B, C){
               tryCatch(
                   nls(mean ~ A / (1 + exp(-B * (hour - C))),
@@ -132,6 +132,7 @@ growth_sigmoid <- function(dataset, column){
                   error = function(e) NULL
               )} else {m}
           }),
+      # Calculate values for y for each x according to the model, for plotting
       fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
 
       # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
@@ -147,41 +148,61 @@ plot_sigmoid <- function(fit_column){
     unnest(c(data, fitted))
   
   column_ggplot <- ggplot(plot_column, aes(x = hour, y = mean, color = condition)) + 
-    geom_point(size = 1) +
-    geom_line(aes(y = fitted), linewidth = 1) +
+    geom_point(size = 1) + #[CUSTOM] Size is 1 to have small points
+    geom_line(aes(y = fitted), linewidth = 1) + #[CUSTOM] Linewidth is 1 to have a slightly thicker line
     xlab("Time (hour)") +
     theme_minimal() +
-    scale_color_igv()
+    labs(color = "Condition") +
+    scale_color_igv() #[CUSTOM] Color scale can be changed.
   column_ggplot
 }
 
 # Use the functions to plot area, length, volume, and save plotly
+# Stops you if any model did not converge.
 area_data <- growth_sigmoid(data_gro, area.t0norm)
+if(any(map_lgl(area_data$model, is.null))){
+  stop("One of the area models is NULL, please rerun with a different C_start (try value_for_c = 40)")
+}
+
+length_data <- growth_sigmoid(data_gro, length.t0norm)
+if(any(map_lgl(length_data$model, is.null))){
+  stop("One of the length models is NULL, please rerun with a different C_start (try value_for_c = 40)")
+}
+
+volume_data <- growth_sigmoid(data_gro, volume.t0norm)
+if(any(map_lgl(volume_data$model, is.null))){
+  stop("One of the volume models is NULL, please rerun with a different C_start (try value_for_c = 40)")
+}
+
+# Plot and save plotly
 area_ggplot <- plot_sigmoid(area_data) + ylab("Area (A. U.)")
 area_plotly <- ggplotly(area_ggplot)
 
-htmlwidgets::saveWidget(as_widget(area_plotly), "results/area.html")
+htmlwidgets::saveWidget(as_widget(area_plotly), "results/growth/growth_area.html")
 
-length_data <- growth_sigmoid(data_gro, length.t0norm)
 length_ggplot <- plot_sigmoid(length_data) + ylab("Length (A. U.)")
 length_plotly <- ggplotly(length_ggplot)
 
-htmlwidgets::saveWidget(as_widget(length_plotly), "results/length.html")
+htmlwidgets::saveWidget(as_widget(length_plotly), "results/growth/growth_length.html")
 
-volume_data <- growth_sigmoid(data_gro, volume.t0norm)
 volume_ggplot <- plot_sigmoid(volume_data) + ylab("Volume (A. U.)")
 volume_plotly <- ggplotly(volume_ggplot)
 
-htmlwidgets::saveWidget(as_widget(volume_plotly), "results/volume.html")
+htmlwidgets::saveWidget(as_widget(volume_plotly), "results/growth/growth_volume.html")
 
 # Compare conditions statistically
+# [CUSTOM] significant p-value to check normality, check for post-hoc tests
 sig_pval <- 0.05
+
+# [CUSTOM] Set control variable: Detects "Water"
 condition_levels <- levels(data_gro$condition)
 control <- condition_levels[str_detect(condition_levels, "Water")]
+
+# Allows wider lines when saving statistics results to text file
 options(width = 1000)
 
 # Get data summary by *time*, not *hour* for more accuracy
-# Use scaled time so the numbers are smaller and modeling finds them
+# Use scaled time (h_nr) so the numbers are smaller and modeling finds them
 # And separate by rep_id (for ANOVA or Kruskal-Wallis means)
 growth_summary <- function(dataset, column){
   dataset |>
@@ -195,7 +216,7 @@ growth_summary <- function(dataset, column){
 }
 
 # Comparison 1: AUC
-## Calculate trapezoidal function
+# Calculate AUC values with trapezoidal function
 growth_AUC <- function(growth_summ_data){
   growth_summ_data |>
     group_by(condition, rep_id) |>
@@ -204,7 +225,7 @@ growth_AUC <- function(growth_summ_data){
     ungroup()
 }
 
-## Check normality and see
+# Check normality: is the histogram normal? Are the residuals normal?
 normality_AUC <- function(growth_AUC_data){
   mu <- mean(growth_AUC_data$AUC)
   sigma <- sd(growth_AUC_data$AUC)
@@ -222,13 +243,16 @@ normality_AUC <- function(growth_AUC_data){
   ggarrange(hi, qq)
 }
 
+# Save normality plot
 save_normality_AUC <- function(growth_AUC_data, growth_var){
   growth_plot <- normality_AUC(growth_AUC_data)
-  ggsave(filename = paste0("results/", growth_var, "_normality_AUC.png"), plot = growth_plot,
+  ggsave(filename = paste0("results/growth/", growth_var, "_normality_AUC.png"), plot = growth_plot,
        width = 17, height = 15, dpi = 1000, units = "cm")
 }
 
 # Area, length, volume
+# [O] normality_AUC function only needed if you want to print the plot to RStudio.
+# Otherwise, it is within save_normality_AUC and plots will be saved later.
 area_summ <- growth_summary(data_gro, area.t0norm)
 area_AUC <- growth_AUC(area_summ)
 # area_normality_AUC <- normality_AUC(area_AUC)
@@ -241,59 +265,69 @@ volume_summ <- growth_summary(data_gro, volume.t0norm)
 volume_AUC <- growth_AUC(volume_summ)
 # volume_normality_AUC <- normality_AUC(volume_AUC)
 
-# Sink results
+# Save statistical tests to file
 growth_list <- list(
   area   = area_AUC,
   length = length_AUC,
   volume = volume_AUC
 )
 
+# For area, length, volume
 for(growth_var in names(growth_list)){
   df <- growth_list[[growth_var]]
 
   # Normality plot: save to file
   save_normality_AUC(df, growth_var)
 
-  # Sink results
-  sink(paste0("results/growth_AUC_", growth_var, ".txt"))
+  # Sink (save) results
+  sink(paste0("results/growth/growth_AUC_", growth_var, ".txt"))
+  # Print what kind of replicate we are using
   cat(replicate)
   cat("\n\nTest AUC:\n")
   cat("Check normality:\n")
+  # Check normality with shapiro test. If not normal, can check normality plots.
+  # If normality plots look okay, ANOVA is quite robust.
   shap <- shapiro.test(df$AUC)
 
   if(shap$p.value < sig_pval){
     cat("Data distribution not normal. Please check assumptions at ")
     cat(growth_var)
     cat("_normality_AUC.png to use ANOVA results.\n\n")
-    cat("Otherwise, here is a Kruskal-Wallis test:\n") 
+    cat("Otherwise, here is a Kruskal-Wallis test:\n")
+    # Kruskal-Wallis test for non-normal histogram and residuals
     AUC_kwt <- kruskal.test(AUC ~ condition, data = df)
     print(AUC_kwt)
 
+    # If Kruskal-Wallis is significant, do post-hoc testing
     if (AUC_kwt$p.value < sig_pval){
+      # Dunn's test, equivalent to TukeyHSD 
       cat("\nResults from Dunn's test:\n")
       # Add IDs because else you can't see in Dunn's test
+      # And print them to know the equivalency
       cat("IDs of the comparisons in Dunn's test:\n")
       df <- df |> mutate(condition_id = dense_rank(condition))
       print(df |> select(condition, condition_id) |> distinct())
       cat("\n")
       AUC_dnn <- dunn.test(df$AUC, g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
 
-      # Might want to add only a comparison with the control (for better statistical power)
+      # Might want to add only a comparison with the control (for better statistical power, equivalent to Dunnett's)
       # This is done by taking the p values of AUC_dnn (AUC_dnn$p), and the comparisons (AUC_dnn$comparisons)
       # And correcting only the p values (with p.adjust) where the comparison has the control.
     } else {
       cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
     }
+  } else {cat("Data distribution is normal.")}
 
-  }
-
+  # One-way ANOVA
+  # Do ANOVA test anyway, in case shapiro is significant, but plots look good.
+  # As well as for non significant shapiro test
   cat("\nOne-way ANOVA summary:\n\n")
   AUC_anova <- aov(AUC ~ condition, data = df)
   print(summary(AUC_anova))
   
-
+  # If ANOVA is significant, do post-hoc Dunnett's and Tukey's
   if (summary(AUC_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
-    cat("\nResults from Dunnet's test:\n")
+    cat("\nResults from Dunnett's test:\n")
     AUC_dnt <- DunnettTest(AUC ~ condition, data = df, control = control)
     print(AUC_dnt)
     cat("\nResults from Tukey's test:\n")
@@ -303,21 +337,27 @@ for(growth_var in names(growth_list)){
     cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
   }
 
+  # Finish saving results
   sink()
-
 }
 
+# Comparison 2: Logistic growth parameters:
 # Compare models by comparing model parameters
-# 1. Fit NLS for each replicate
+# A = maximum value = plateau
+# B = growth rate = slope
+# C = half growth = inflection point
 
+# Fit NLS like it was done for plotting but for each replicate
 growth_params <- function(growth_summ_data){
   fit_param <- growth_summ_data |>
     group_by(condition, rep_id) |>
     nest() |>
     mutate(
+        # Set reasonable start values
         A_start = map_dbl(data, ~ max(.x$mean, na.rm = TRUE)),
         B_start = 0.01,
         C_start = map2_dbl(data, A_start, ~ .x$h_nr[which.min(abs(.x$mean - .y / 2))]),
+        # Fit the model
         model = pmap(list(data, A_start, B_start, C_start), function(df, A, B, C){
             tryCatch(
                 nls(mean ~ A / (1 + exp(-B * (h_nr - C))),
@@ -344,13 +384,15 @@ growth_params <- function(growth_summ_data){
                 error = function(e) NULL
             )} else {m}
         }),
+    # Calculate fitted values
     fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
   )
+  # Set condition as factor for statistics
   fit_param$condition <- factor(fit_param$condition)
   fit_param
 }
 
-# Extract parameters from fits
+# Extract parameters (A, B, C) from fits
 get_params <- function(growth_param_data){
   growth_param_data |>
     mutate(params = map(model, ~ as_tibble(as.list(coef(.x))))) |>
@@ -359,7 +401,7 @@ get_params <- function(growth_param_data){
     ungroup()
 }
 
-# Check normality and see
+# Check normality: is the histogram normal? Are the residuals normal?
 normality_params <- function(growth_params_data, param){
   mu <- mean(growth_params_data[[param]])
   sigma <- sd(growth_params_data[[param]])
@@ -377,13 +419,15 @@ normality_params <- function(growth_params_data, param){
   ggarrange(hi, qq)
 }
 
+# Save normality plot
 save_normality_params <- function(growth_params_data, param, growth_var){
   growth_plot <- normality_params(growth_params_data, param)
-  ggsave(filename = paste0("results/", growth_var, "_normality_", param, ".png"), plot = growth_plot,
+  ggsave(filename = paste0("results/growth/", growth_var, "_normality_", param, ".png"), plot = growth_plot,
        width = 17, height = 15, dpi = 1000, units = "cm")
 }
 
-# Area, length, volume
+# Use the functions to model area, length, volume, per replicate
+# Stops you if any model did not converge.
 area_params_fit <- growth_params(area_summ)
 if(any(map_lgl(area_params_fit$model, is.null))){
   stop("One of the area models is NULL, please rerun with a different C_start (try value_for_c = 40)")
@@ -399,32 +443,72 @@ if(any(map_lgl(volume_params_fit$model, is.null))){
   stop("One of the volume models is NULL, please rerun with a different C_start (try value_for_c = 40)")
 }
 
+# Plot the replicates separately to see:
+# NOT plotting data points (there are too many)
+# Instead, plot only the modelled logistic growth curves
+# We can see if there is a lot of difference between replicates
+plot_rep_sigmoid <- function(params_fit){
+  plot_column <- params_fit |>
+    select(condition, data, fitted) |>
+    unnest(c(data, fitted))
+  
+  column_ggplot <- ggplot(plot_column, aes(x = h_nr, y = fitted, color = rep_id)) + 
+    geom_line() +
+    xlab("Time (hour)") +
+    labs(color = "Replicate") +
+    theme_minimal()
+  column_ggplot
+}
+
+# Plot and save plotly
+area_rep_ggplot <- plot_rep_sigmoid(area_params_fit) + ylab("Area (A. U.)")
+area_rep_plotly <- ggplotly(area_rep_ggplot)
+
+htmlwidgets::saveWidget(as_widget(area_rep_plotly), "results/growth/growth_area_rep.html")
+
+length_rep_ggplot <- plot_rep_sigmoid(length_params_fit) + ylab("Length (A. U.)")
+length_rep_plotly <- ggplotly(length_rep_ggplot)
+
+htmlwidgets::saveWidget(as_widget(length_rep_plotly), "results/growth/growth_length_rep.html")
+
+volume_rep_ggplot <- plot_rep_sigmoid(volume_params_fit) + ylab("Volume (A. U.)")
+volume_rep_plotly <- ggplotly(volume_rep_ggplot)
+
+htmlwidgets::saveWidget(as_widget(volume_rep_plotly), "results/growth/growth_volume_rep.html")
+
+
+# Extract parameters from model fit
 area_params <- get_params(area_params_fit)
 length_params <- get_params(length_params_fit)
 volume_params <- get_params(volume_params_fit)
 
-# Sink results
+# Save statistical tests to file
 growth_params_list <- list(
   area   = area_params,
   length = length_params,
   volume = volume_params
 )
 
+# For area, length, volume
 for(growth_var in names(growth_params_list)){
   df <- growth_params_list[[growth_var]]
+    
+  # Sink (save) results, all parameters in one file
+  sink(paste0("results/growth/growth_params_", growth_var, ".txt"))
+  # Print what kind of replicate we are using
+  cat(replicate)
 
-  sink(paste0("results/growth_params_", growth_var, ".txt"))
-
+  # For each parameter
   for(param in c("A", "B", "C")){
 
     # Normality plot: save to file
     save_normality_params(df, param, growth_var)
 
-    # Sink results
-    cat(replicate)
     cat("\n\nTest ")
     cat(param)
     cat(":\nCheck normality:\n")
+    # Check normality with shapiro test. If not normal, can check normality plots.
+    # If normality plots look okay, ANOVA is quite robust.
     shap <- shapiro.test(df[[param]])
 
     if(shap$p.value < sig_pval){
@@ -434,12 +518,16 @@ for(growth_var in names(growth_params_list)){
       cat(param)
       cat(".png to use ANOVA results.\n\n")
       cat("Otherwise, here is a Kruskal-Wallis test:\n")
+      # Kruskal-Wallis test for non-normal histogram and residuals
       param_kwt <- kruskal.test(reformulate("condition", response = param), data = df)
       print(param_kwt)
 
+      # If Kruskal-Wallis is significant, do post-hoc testing
       if (param_kwt$p.value < sig_pval){
+        # Dunn's test, equivalent to TukeyHSD 
         cat("\nResults from Dunn's test:\n")
         # Add IDs because else you can't see in Dunn's test
+        # And print them to know the equivalency
         cat("IDs of the comparisons in Dunn's test:\n")
         df <- df |> mutate(condition_id = dense_rank(condition))
         print(df |> select(condition, condition_id) |> distinct())
@@ -447,21 +535,23 @@ for(growth_var in names(growth_params_list)){
         dnn <- dunn.test(df[[param]], g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
 
         # Might want to add only a comparison with the control (for better statistical power)
-        # This is done by taking the p values of AUC_dnn (AUC_dnn$p), and the comparisons (AUC_dnn$comparisons)
+        # This is done by taking the p values of dnn (dnn$p), and the comparisons (dnn$comparisons)
         # And correcting only the p values (with p.adjust) where the comparison has the control.
       } else {
         cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
       }
+    } else {cat("Data distribution is normal.")}
 
-    }
-
+    # One-way ANOVA
+    # Do ANOVA test anyway, in case shapiro is significant, but plots look good.
+    # As well as for non significant shapiro test
     cat("\nOne-way ANOVA summary:\n\n")
     param_anova <- aov(reformulate("condition", response = param), data = df)
     print(summary(param_anova))
 
-
+    # If ANOVA is significant, do post-hoc Dunnett's and Tukey's
     if (summary(param_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
-      cat("\nResults from Dunnet's test:\n")
+      cat("\nResults from Dunnett's test:\n")
       param_dnt <- DunnettTest(reformulate("condition", response = param), data = df, control = control)
       print(param_dnt)
       cat("\nResults from Tukey's test:\n")
@@ -471,29 +561,172 @@ for(growth_var in names(growth_params_list)){
       cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
     }
   }
+  
+  # Finish saving results, after all parameters are done
   sink()
 }
 
-# If you want, you can plot the replicates separately to see:
-# Actually this looks weird so maybe try to do hour instead of h_nr for parameters.
-# Check what to do with replicates that grow oddly.
-plot_rep_sigmoid <- function(params_fit){
-  # 3. Unnest and plot
-  plot_column <- params_fit |>
-    select(condition, data, fitted) |>
-    unnest(c(data, fitted))
-  
-  column_ggplot <- ggplot(plot_column, aes(x = h_nr, y = fitted, color = rep_id)) + 
-    geom_line()
-    xlab("Time (hour)") +
-    theme_minimal() +
-    scale_color_igv()
-  column_ggplot
+# Comparison 3: Compare a certain time point
+timepoint <- 80 #Hour
+
+# Summarise at timepoint (keep replicates separate)
+data_timepoint <- data_gro |>
+  filter(hour == timepoint) |>
+  group_by(condition, rep_id) |>
+  summarise(
+    length = mean(length),
+    area = mean(area),
+    volume = mean(volume),
+    length.t0norm = mean(length.t0norm),
+    area.t0norm = mean(area.t0norm),
+    volume.t0norm = mean(volume.t0norm)
+  ) |> ungroup()
+
+# Set condition as factor
+data_timepoint$condition <- factor(data_timepoint$condition)
+# Add IDs because else you can't see in Dunn's test
+data_timepoint <- data_timepoint |> mutate(condition_id = dense_rank(condition))
+
+
+# Check normality: is the histogram normal? Are the residuals normal?
+normality_tp <- function(data_timepoint, growth_var){
+  mu <- mean(data_timepoint[[growth_var]])
+  sigma <- sd(data_timepoint[[growth_var]])
+
+  hi <- ggplot(data_timepoint, aes(x = .data[[growth_var]])) +
+    geom_histogram(bins = 15, fill = "skyblue", color = "black", aes(y = after_stat(density))) +
+    stat_function(fun = dnorm, args = list(mean = mu, sd = sigma), color = "red", linewidth = 1) +
+    theme_minimal()
+
+  qq <- ggplot(data_timepoint, aes(sample = .data[[growth_var]])) +
+       stat_qq() +
+       stat_qq_line() +
+       theme_minimal()
+
+  ggarrange(hi, qq)
+}
+
+# Save normality plot
+save_normality_tp <- function(data_timepoint, growth_var, timepoint){
+  growth_plot <- normality_tp(data_timepoint, growth_var)
+  ggsave(filename = paste0("results/growth/", growth_var, "_normality_", timepoint, ".png"), plot = growth_plot,
+       width = 17, height = 15, dpi = 1000, units = "cm")
 }
 
 
+# For area, length, volume
+for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
+    
+  # Sink (save) results
+  sink(paste0("results/growth/growth_", timepoint, "_", growth_var, ".txt"))
+  # Print what kind of replicate we are using
+  cat(replicate)
+
+  # Normality plot: save to file
+  save_normality_tp(data_timepoint, growth_var, timepoint)
+  cat("\n\nTest at ")
+  cat(timepoint)
+  cat(" hours:\nCheck normality:\n")
+  # Check normality with shapiro test. If not normal, can check normality plots.
+  # If normality plots look okay, ANOVA is quite robust.
+  shap <- shapiro.test(data_timepoint[[growth_var]])
+  if(shap$p.value < sig_pval){
+    cat("Data distribution not normal. Please check assumptions at ")
+    cat(growth_var)
+    cat("_normality_")
+    cat(timepoint)
+    cat(".png to use ANOVA results.\n\n")
+    cat("Otherwise, here is a Kruskal-Wallis test:\n")
+    # Kruskal-Wallis test for non-normal histogram and residuals
+    tp_kwt <- kruskal.test(reformulate("condition", response = growth_var), data = data_timepoint)
+    print(tp_kwt)
+    # If Kruskal-Wallis is significant, do post-hoc testing
+    if (tp_kwt$p.value < sig_pval){
+      # Dunn's test, equivalent to TukeyHSD
+      cat("\nResults from Dunn's test:\n")
+      # Print IDs to know the equivalency
+      cat("IDs of the comparisons in Dunn's test:\n")
+      print(data_timepoint |> select(condition, condition_id) |> distinct())
+      cat("\n")
+      dnn <- dunn.test(data_timepoint[[growth_var]], g = data_timepoint$condition_id, method = "holm") #Change method to "BH" for less stringency
+      # Might want to add only a comparison with the control (for better statistical power)
+      # This is done by taking the p values of dnn (dnn$p), and the comparisons (dnn$comparisons)
+      # And correcting only the p values (with p.adjust) where the comparison has the control.
+    } else {
+      cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
+    }
+  } else {cat("Data distribution is normal.")}
+
+  # One-way ANOVA
+  # Do ANOVA test anyway, in case shapiro is significant, but plots look good.
+  # As well as for non significant shapiro test
+  cat("\nOne-way ANOVA summary:\n\n")
+  tp_anova <- aov(reformulate("condition", response = growth_var), data = data_timepoint)
+  print(summary(tp_anova))
+
+  # If ANOVA is significant, do post-hoc Dunnett's and Tukey's
+  if (summary(tp_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
+    cat("\nResults from Dunnett's test:\n")
+    tp_dnt <- DunnettTest(reformulate("condition", response = growth_var), data = data_timepoint, control = control)
+    print(tp_dnt)
+    cat("\nResults from Tukey's test:\n")
+    tp_thsd <- TukeyHSD(tp_anova)
+    print(tp_thsd)
+  } else {
+    cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
+  }
+  
+  # Finish saving results
+  sink()
+}
+
+# Plot at timepoint
+# Organise data
+summ_timepoint <- data_timepoint |>
+  group_by(condition) |>
+  summarise(
+    mean_length = mean(length),
+    mean_area = mean(area),
+    mean_volume = mean(volume),
+    mean_length.t0norm = mean(length.t0norm),
+    mean_area.t0norm = mean(area.t0norm),
+    mean_volume.t0norm = mean(volume.t0norm),
+    n = n(),
+    sem_length = sd(length)/sqrt(n),
+    sem_area = sd(area)/sqrt(n),
+    sem_volume = sd(volume)/sqrt(n),
+    sem_length.t0norm = sd(length.t0norm)/sqrt(n),
+    sem_area.t0norm = sd(area.t0norm)/sqrt(n),
+    sem_volume.t0norm = sd(volume.t0norm)/sqrt(n)
+    )
+
+# Plotting function
+plot_timepoint <- function(plot_var, error_var){
+  ggplot(summ_timepoint, aes(x = condition, y = {{plot_var}})) +
+    geom_point(size = 2) +
+    geom_errorbar(aes(ymin = {{plot_var}}-{{error_var}}, ymax = {{plot_var}}+{{error_var}})) +
+    scale_x_discrete(guide = guide_axis(angle = 90)) +
+    xlab("")
+}
+
+# Plot and save plots
+tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
+ggsave(filename = paste0("results/growth/area_", timepoint, ".png"), plot = tp_area,
+       width = 17, height = 17, dpi = 1000, units = "cm")
+
+tp_length <- plot_timepoint(mean_length.t0norm, sem_length.t0norm) + ylab("Length (A. U.)")
+ggsave(filename = paste0("results/growth/length_", timepoint, ".png"), plot = tp_length,
+       width = 17, height = 17, dpi = 1000, units = "cm")
+
+tp_volume <- plot_timepoint(mean_volume.t0norm, sem_volume.t0norm) + ylab("Volume (A. U.)")
+ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp_volume,
+       width = 17, height = 17, dpi = 1000, units = "cm")
+
+
+# [UNFINISHED] NLME OR GNLS MODEL
 # An nlme model or gnls model is needed for official LRT testing, but it is a lot of parameters
-# and a lot of work, and it is difficult for it to converge.
+# and a lot of work, and it is difficult for it to converge. Therefore, it is difficult to set up
+# generalized modeling for any and all kinds of experiments.
 # Might be worth looking into it if the previous testing is not enough
 
 #nlme
@@ -509,6 +742,7 @@ plot_rep_sigmoid <- function(params_fit){
 #   pull(named_vals) |>
 #   unlist()
 # 
+## Unfinished nlme
 # model <- nlme(area.t0norm ~ A / (1 + exp(-B * (hour - C))),
 #               fixed = A + B + C ~ condition,
 #               random = A + B + C ~ 1 | subject,
@@ -547,7 +781,7 @@ plot_rep_sigmoid <- function(params_fit){
 #        n = n(),
 #        .groups = "drop"
 #    )
-#
+## Unfinished gnls
 #area_null <- gnls(area.t0norm ~ A / (1 + exp(-B * (hour - C))),
 #                    data = data_gro,
 #                    start = baseline)

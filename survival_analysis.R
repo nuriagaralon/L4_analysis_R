@@ -6,9 +6,9 @@
 # Load necessary libraries
 library(tidyverse)
 library(readxl)
+library(plotly)
 library(survival)
 library(survminer)
-library(plotly)
 
 # Get surv data file
 # Takes all files in the folder data/ which contain "survival" in the name
@@ -116,6 +116,8 @@ data_surv <- surv_pivot(table_surv)
 km_fit <- survfit(Surv(time, event) ~ condition,
                   data = data_surv, conf.type = "log")
 
+#km_lrt <- survdiff(Surv(time, event) ~ condition, data = data_surv)
+
 surv_plot_all <- ggsurvplot(
   km_fit,
   data = data_surv,
@@ -145,7 +147,7 @@ surv_plot_all # For the regular ggplot
 surv_plotly # For the plotly plot
 
 # Save plotly plot as html
-htmlwidgets::saveWidget(as_widget(surv_plotly), "results/survival.html")
+htmlwidgets::saveWidget(as_widget(surv_plotly), "results/survival/survival.html")
 
 
 # [O] This calculates p-values and plots ONLY what is filtered through conds
@@ -157,6 +159,8 @@ data_surv_set <- data_surv |> filter(str_detect(condition, conds))
 
 km_fit_set <- survfit(Surv(time, event) ~ condition,
                       data = data_surv_set, conf.type = "log")
+
+#km_set_lrt <- survdiff(Surv(time, event) ~ condition, data = data_surv_set)
 
 surv_plot_set <- ggsurvplot(
   km_fit_set,
@@ -181,5 +185,5 @@ ggsave_workaround <- function(g){
 
 g_to_save <- ggsave_workaround(surv_plot_set)
 
-ggsave(filename = "results/survival_set.png", plot = g_to_save,
+ggsave(filename = "results/survival/survival_set.png", plot = g_to_save,
        width = 17, height = 15, dpi = 1000, units = "cm")
