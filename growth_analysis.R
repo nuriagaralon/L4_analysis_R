@@ -631,6 +631,7 @@ for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
     print(tp_dnt)
     cat("\nResults from Tukey's test:\n")
     tp_thsd <- TukeyHSD(tp_anova)
+    assign(paste0("tp_thsd", growth_var), as.data.frame(tp_dnt[[1]]))
     print(tp_thsd)
   } else {
     cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
@@ -693,6 +694,7 @@ plot_signif <- function(tp_dnt_var, plot_var, error_var){
 
 
 # Plot and save plots
+# [CUSTOM] tp_dnt_area.t0norm can be changed to tp_thsd_area.t0norm for Tukey significant values instead
 tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
 if (exists("tp_dnt_area.t0norm")){
   tp_area <- tp_area + plot_signif(tp_dnt_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
