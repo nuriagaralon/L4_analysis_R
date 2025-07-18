@@ -10,7 +10,7 @@ library(readxl)
 library(plotly)
 library(pracma)
 library(DescTools)
-library(dunn.test)
+library(rstatix)
 library(ggpubr)
 library(ggsci)
 #library(nlme) #[O], explained later
@@ -221,8 +221,9 @@ sig_pval <- 0.05
 condition_levels <- levels(data_gro$condition)
 control <- condition_levels[str_detect(condition_levels, "Water")]
 
-# Allows wider lines when saving statistics results to text file
+# Allows wider lines and enough rows when saving statistics results to text file
 options(width = 1000)
+options(max.print = 2000)
 
 # Get data summary by *time*, not *hour* for more accuracy
 # Use scaled time (h_nr) so the numbers are smaller and modeling finds them
@@ -304,16 +305,10 @@ for(growth_var in names(growth_list)){
 
     # If Kruskal-Wallis is significant, do post-hoc testing
     if (AUC_kwt$p.value < sig_pval){
-      # Dunn's test, equivalent to TukeyHSD 
+      # Dunn's test, equivalent to TukeyHSD
       cat("\nResults from Dunn's test:\n")
-      # Add IDs because else you can't see in Dunn's test
-      # And print them to know the equivalency
-      cat("IDs of the comparisons in Dunn's test:\n")
-      df <- df |> mutate(condition_id = dense_rank(condition))
-      print(df |> select(condition, condition_id) |> distinct())
-      cat("\n")
-      AUC_dnn <- dunn.test(df$AUC, g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
-
+      AUC_dnn <- dunn_test(df, AUC ~ condition, p.adjust.method = "holm") #Change method to "BH" for less stringency
+      print(as.data.frame(AUC_dnn))
       # Might want to add only a comparison with the control (for better statistical power, equivalent to Dunnett's)
       # This is done by taking the p values of AUC_dnn (AUC_dnn$p), and the comparisons (AUC_dnn$comparisons)
       # And correcting only the p values (with p.adjust) where the comparison has the control.
@@ -509,14 +504,8 @@ for(growth_var in names(growth_params_list)){
       if (param_kwt$p.value < sig_pval){
         # Dunn's test, equivalent to TukeyHSD 
         cat("\nResults from Dunn's test:\n")
-        # Add IDs because else you can't see in Dunn's test
-        # And print them to know the equivalency
-        cat("IDs of the comparisons in Dunn's test:\n")
-        df <- df |> mutate(condition_id = dense_rank(condition))
-        print(df |> select(condition, condition_id) |> distinct())
-        cat("\n")
-        dnn <- dunn.test(df[[param]], g = df$condition_id, method = "holm") #Change method to "BH" for less stringency
-
+        param_dnn <- dunn_test(df, reformulate("condition", response = param), p.adjust.method = "holm") #Change method to "BH" for less stringency
+        print(as.data.frame(param_dnn))
         # Might want to add only a comparison with the control (for better statistical power)
         # This is done by taking the p values of dnn (dnn$p), and the comparisons (dnn$comparisons)
         # And correcting only the p values (with p.adjust) where the comparison has the control.
@@ -567,8 +556,6 @@ data_timepoint <- data_gro |>
 
 # Set condition as factor
 data_timepoint$condition <- factor(data_timepoint$condition)
-# Add IDs because else you can't see in Dunn's test
-data_timepoint <- data_timepoint |> mutate(condition_id = dense_rank(condition))
 
 # For area, length, volume
 for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
@@ -603,11 +590,9 @@ for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
     if (tp_kwt$p.value < sig_pval){
       # Dunn's test, equivalent to TukeyHSD
       cat("\nResults from Dunn's test:\n")
-      # Print IDs to know the equivalency
-      cat("IDs of the comparisons in Dunn's test:\n")
-      print(data_timepoint |> select(condition, condition_id) |> distinct())
-      cat("\n")
-      dnn <- dunn.test(data_timepoint[[growth_var]], g = data_timepoint$condition_id, method = "holm") #Change method to "BH" for less stringency
+      tp_dnn <- dunn_test(data_timepoint, reformulate("condition", response = growth_var), p.adjust.method = "holm") #Change method to "BH" for less stringency
+      print(as.data.frame(tp_dnn))
+      assign(paste0("tp_dnn_", growth_var), as.data.frame(tp_dnn))
       # Might want to add only a comparison with the control (for better statistical power)
       # This is done by taking the p values of dnn (dnn$p), and the comparisons (dnn$comparisons)
       # And correcting only the p values (with p.adjust) where the comparison has the control.
@@ -631,7 +616,7 @@ for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
     print(tp_dnt)
     cat("\nResults from Tukey's test:\n")
     tp_thsd <- TukeyHSD(tp_anova)
-    assign(paste0("tp_thsd", growth_var), as.data.frame(tp_dnt[[1]]))
+    assign(paste0("tp_thsd_", growth_var), as.data.frame(tp_dnt[[1]]))
     print(tp_thsd)
   } else {
     cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
@@ -679,6 +664,11 @@ plot_signif <- function(tp_dnt_var, plot_var, error_var){
                               pval < 0.01 ~ "**",
                               pval < 0.05 ~ "*",
                               pval >= 0.05 ~ "NS"))
+  
+  if (nrow(sig_data) == 0) {
+    return(NULL)  # nothing to add to plot
+  }
+
   max_y <- max(summ_timepoint[[plot_var]] + summ_timepoint[[error_var]])
   min_y <- min(summ_timepoint[[plot_var]] - summ_timepoint[[error_var]])
   gap <- 0.1 * (max_y - min_y)
@@ -692,13 +682,40 @@ plot_signif <- function(tp_dnt_var, plot_var, error_var){
   plot_tp
 }
 
+# Plotting significant values from Dunn's test
+plot_signif_dnn <- function(tp_dnn_var, plot_var, error_var){
+  sig_data <- tp_dnn_var |>
+    filter(!(p.adj.signif == "ns"))
+  
+  if (nrow(sig_data) == 0) {
+    return(NULL)  # nothing to add to plot
+  }
+
+  max_y <- max(summ_timepoint[[plot_var]] + summ_timepoint[[error_var]])
+  min_y <- min(summ_timepoint[[plot_var]] - summ_timepoint[[error_var]])
+  gap <- 0.1 * (max_y - min_y)
+    
+  comparisons <- sig_data |>
+    mutate(pair = pmap(list(group1, group2), c)) |> pull(pair)
+  
+  y_positions <- seq(from = max_y + gap, by = gap, length.out = length(comparisons))
+  plot_tp <- geom_signif(comparison = comparisons,
+                         annotations = sig_data$p.adj.signif,
+                         y_position = y_positions,
+                         tip_length = gap / 4)
+  plot_tp
+}
+
+
 
 # Plot and save plots
 # [CUSTOM] tp_dnt_area.t0norm can be changed to tp_thsd_area.t0norm for Tukey significant values instead
+
 tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
 if (exists("tp_dnt_area.t0norm")){
   tp_area <- tp_area + plot_signif(tp_dnt_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
 }
+
 ggsave(filename = paste0("results/growth/area_", timepoint, ".png"), plot = tp_area,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
@@ -715,6 +732,12 @@ if (exists("tp_dnt_volume.t0norm")){
 }
 ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp_volume,
        width = 17, height = 17, dpi = 1000, units = "cm")
+
+# [CUSTOM] we can also use plot_signif_dnn if we want to use Dunn's test from Kruskal-Wallis post-hoc
+## plot_signif_dnn example:
+#if (exists("tp_dnn_area.t0norm")){
+#  tp_area <- tp_area + plot_signif_dnn(tp_dnn_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
+#}
 
 
 # [UNFINISHED] NLME OR GNLS MODEL
