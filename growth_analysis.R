@@ -627,6 +627,7 @@ for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
   if (summary(tp_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
     cat("\nResults from Dunnett's test:\n")
     tp_dnt <- DunnettTest(reformulate("condition", response = growth_var), data = data_timepoint, control = control)
+    assign(paste0("tp_dnt_", growth_var), as.data.frame(tp_dnt[[1]]))
     print(tp_dnt)
     cat("\nResults from Tukey's test:\n")
     tp_thsd <- TukeyHSD(tp_anova)
@@ -668,16 +669,48 @@ plot_timepoint <- function(plot_var, error_var){
     xlab("")
 }
 
+# Plotting significant values
+plot_signif <- function(tp_dnt_var, plot_var, error_var){
+  sig_data <- tp_dnt_var |>
+    filter(pval < sig_pval) |>
+    rownames_to_column(var = "condition") |>
+    mutate(sigval = case_when(pval < 0.001 ~ "***",
+                              pval < 0.01 ~ "**",
+                              pval < 0.05 ~ "*",
+                              pval >= 0.05 ~ "NS"))
+  max_y <- max(summ_timepoint[[plot_var]] + summ_timepoint[[error_var]])
+  min_y <- min(summ_timepoint[[plot_var]] - summ_timepoint[[error_var]])
+  gap <- 0.1 * (max_y - min_y)
+    
+  comparisons <- str_split(sig_data$condition, pattern = regex("-(?=[^-]+$)"))
+  y_positions <- seq(from = max_y + gap, by = gap, length.out = length(comparisons))
+  plot_tp <- geom_signif(comparison = comparisons,
+                         annotations = sig_data$sigval,
+                         y_position = y_positions,
+                         tip_length = gap / 4)
+  plot_tp
+}
+
+
 # Plot and save plots
 tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
+if (exists("tp_dnt_area.t0norm")){
+  tp_area <- tp_area + plot_signif(tp_dnt_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
+}
 ggsave(filename = paste0("results/growth/area_", timepoint, ".png"), plot = tp_area,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
 tp_length <- plot_timepoint(mean_length.t0norm, sem_length.t0norm) + ylab("Length (A. U.)")
+if (exists("tp_dnt_length.t0norm")){
+  tp_length <- tp_length + plot_signif(tp_dnt_length.t0norm, "mean_length.t0norm", "sem_length.t0norm")
+}
 ggsave(filename = paste0("results/growth/length_", timepoint, ".png"), plot = tp_length,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
 tp_volume <- plot_timepoint(mean_volume.t0norm, sem_volume.t0norm) + ylab("Volume (A. U.)")
+if (exists("tp_dnt_volume.t0norm")){
+  tp_volume <- tp_volume + plot_signif(tp_dnt_volume.t0norm, "mean_volume.t0norm", "sem_volume.t0norm")
+}
 ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp_volume,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
