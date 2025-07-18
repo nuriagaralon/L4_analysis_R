@@ -4,6 +4,7 @@
 # in the experiment
 
 # Load necessary libraries
+library(ggfortify)
 library(tidyverse)
 library(readxl)
 library(plotly)
@@ -174,6 +175,28 @@ if(any(map_lgl(volume_data$model, is.null))){
   stop("One of the volume models is NULL, please rerun with a different C_start (try value_for_c = 40)")
 }
 
+## [O] If the model did not converge, change placeholder (for example, to volume_data). 
+## Can also change the value_for_c. It might also not converge.
+#value_for_c <- 40
+#placeholder <- placeholder |>
+#    mutate(
+#      C_start = if_else(map_lgl(model, is.null), value_for_c, C_start),
+#      model = pmap(list(model, data, A_start, B_start, C_start), function(m, df, A, B, C){
+#              if (is.null(m)) {
+#              tryCatch(
+#                  nls(mean ~ A / (1 + exp(-B * (hour - C))),
+#                      data = df,
+#                      start = list(A = A, B = B, C = C)),
+#                  error = function(e) NULL
+#              )} else {m}
+#          }),
+#      # Calculate values for y for each x according to the model, for plotting
+#      fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
+#
+#      # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
+#      r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
+#    )
+
 # Plot and save plotly
 area_ggplot <- plot_sigmoid(area_data) + ylab("Area (A. U.)")
 area_plotly <- ggplotly(area_ggplot)
@@ -225,45 +248,25 @@ growth_AUC <- function(growth_summ_data){
     ungroup()
 }
 
-# Check normality: is the histogram normal? Are the residuals normal?
-normality_AUC <- function(growth_AUC_data){
-  mu <- mean(growth_AUC_data$AUC)
-  sigma <- sd(growth_AUC_data$AUC)
-
-  hi <- ggplot(growth_AUC_data, aes(x = AUC)) +
-    geom_histogram(bins = 15, fill = "skyblue", color = "black", aes(y = after_stat(density))) +
-    stat_function(fun = dnorm, args = list(mean = mu, sd = sigma), color = "red", linewidth = 1) +
-    theme_minimal()
-
-  qq <- ggplot(growth_AUC_data, aes(sample = AUC)) +
-       stat_qq() +
-       stat_qq_line() +
-       theme_minimal()
-
-  ggarrange(hi, qq)
-}
-
+# Check normality: Are the residuals normal?
 # Save normality plot
-save_normality_AUC <- function(growth_AUC_data, growth_var){
-  growth_plot <- normality_AUC(growth_AUC_data)
-  ggsave(filename = paste0("results/growth/", growth_var, "_normality_AUC.png"), plot = growth_plot,
-       width = 17, height = 15, dpi = 1000, units = "cm")
+save_normality <- function(model, growth_var, param){
+  qq <- ggqqplot(residuals(model))
+  sl <- autoplot(model, which = 3)[[1]]
+  growth_plot <- ggarrange(sl, qq)
+  ggsave(filename = paste0("results/growth/", growth_var, "_normality_", param, ".png"), plot = growth_plot,
+       width = 20, height = 15, dpi = 1000, units = "cm")
 }
 
 # Area, length, volume
-# [O] normality_AUC function only needed if you want to print the plot to RStudio.
-# Otherwise, it is within save_normality_AUC and plots will be saved later.
 area_summ <- growth_summary(data_gro, area.t0norm)
 area_AUC <- growth_AUC(area_summ)
-# area_normality_AUC <- normality_AUC(area_AUC)
 
 length_summ <- growth_summary(data_gro, length.t0norm)
 length_AUC <- growth_AUC(length_summ)
-# length_normality_AUC <- normality_AUC(length_AUC)
 
 volume_summ <- growth_summary(data_gro, volume.t0norm)
 volume_AUC <- growth_AUC(volume_summ)
-# volume_normality_AUC <- normality_AUC(volume_AUC)
 
 # Save statistical tests to file
 growth_list <- list(
@@ -277,7 +280,8 @@ for(growth_var in names(growth_list)){
   df <- growth_list[[growth_var]]
 
   # Normality plot: save to file
-  save_normality_AUC(df, growth_var)
+  model  <- lm(AUC ~ condition, data = df)
+  save_normality(model, growth_var, "AUC")
 
   # Sink (save) results
   sink(paste0("results/growth/growth_AUC_", growth_var, ".txt"))
@@ -285,16 +289,16 @@ for(growth_var in names(growth_list)){
   cat(replicate)
   cat("\n\nTest AUC:\n")
   cat("Check normality:\n")
-  # Check normality with shapiro test. If not normal, can check normality plots.
-  # If normality plots look okay, ANOVA is quite robust.
-  shap <- shapiro.test(df$AUC)
+  # Check normality of residuals with shapiro test. If not normal,
+  # can check QQ plot. If it looks okay, ANOVA is quite robust.
+  shap <- shapiro.test(residuals(model))
 
   if(shap$p.value < sig_pval){
-    cat("Data distribution not normal. Please check assumptions at ")
+    cat("Residuals distribution not normal. Please check assumptions at ")
     cat(growth_var)
     cat("_normality_AUC.png to use ANOVA results.\n\n")
     cat("Otherwise, here is a Kruskal-Wallis test:\n")
-    # Kruskal-Wallis test for non-normal histogram and residuals
+    # Kruskal-Wallis test for non-normal residuals
     AUC_kwt <- kruskal.test(AUC ~ condition, data = df)
     print(AUC_kwt)
 
@@ -316,7 +320,7 @@ for(growth_var in names(growth_list)){
     } else {
       cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
     }
-  } else {cat("Data distribution is normal.")}
+  } else {cat("Residuals distribution is normal.")}
 
   # One-way ANOVA
   # Do ANOVA test anyway, in case shapiro is significant, but plots look good.
@@ -386,6 +390,9 @@ growth_params <- function(growth_summ_data){
         }),
     # Calculate fitted values
     fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
+    
+    # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
+    r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
   )
   # Set condition as factor for statistics
   fit_param$condition <- factor(fit_param$condition)
@@ -399,31 +406,6 @@ get_params <- function(growth_param_data){
     select(condition, rep_id, params) |>
     unnest(params) |>
     ungroup()
-}
-
-# Check normality: is the histogram normal? Are the residuals normal?
-normality_params <- function(growth_params_data, param){
-  mu <- mean(growth_params_data[[param]])
-  sigma <- sd(growth_params_data[[param]])
-
-  hi <- ggplot(growth_params_data, aes(x = .data[[param]])) +
-    geom_histogram(bins = 15, fill = "skyblue", color = "black", aes(y = after_stat(density))) +
-    stat_function(fun = dnorm, args = list(mean = mu, sd = sigma), color = "red", linewidth = 1) +
-    theme_minimal()
-
-  qq <- ggplot(growth_params_data, aes(sample = .data[[param]])) +
-       stat_qq() +
-       stat_qq_line() +
-       theme_minimal()
-
-  ggarrange(hi, qq)
-}
-
-# Save normality plot
-save_normality_params <- function(growth_params_data, param, growth_var){
-  growth_plot <- normality_params(growth_params_data, param)
-  ggsave(filename = paste0("results/growth/", growth_var, "_normality_", param, ".png"), plot = growth_plot,
-       width = 17, height = 15, dpi = 1000, units = "cm")
 }
 
 # Use the functions to model area, length, volume, per replicate
@@ -502,23 +484,24 @@ for(growth_var in names(growth_params_list)){
   for(param in c("A", "B", "C")){
 
     # Normality plot: save to file
-    save_normality_params(df, param, growth_var)
-
+    model  <- lm(reformulate("condition", response = param), data = df)
+    save_normality(model, growth_var, param)
+    
     cat("\n\nTest ")
     cat(param)
     cat(":\nCheck normality:\n")
-    # Check normality with shapiro test. If not normal, can check normality plots.
-    # If normality plots look okay, ANOVA is quite robust.
-    shap <- shapiro.test(df[[param]])
+    # Check normality of residuals with shapiro test. If not normal,
+    # can check QQ plot. If it looks okay, ANOVA is quite robust.
+    shap <- shapiro.test(residuals(model))
 
     if(shap$p.value < sig_pval){
-      cat("Data distribution not normal. Please check assumptions at ")
+      cat("Residuals distribution not normal. Please check assumptions at ")
       cat(growth_var)
       cat("_normality_")
       cat(param)
       cat(".png to use ANOVA results.\n\n")
       cat("Otherwise, here is a Kruskal-Wallis test:\n")
-      # Kruskal-Wallis test for non-normal histogram and residuals
+      # Kruskal-Wallis test for non-normal residuals
       param_kwt <- kruskal.test(reformulate("condition", response = param), data = df)
       print(param_kwt)
 
@@ -540,7 +523,7 @@ for(growth_var in names(growth_params_list)){
       } else {
         cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
       }
-    } else {cat("Data distribution is normal.")}
+    } else {cat("Residuals distribution is normal.")}
 
     # One-way ANOVA
     # Do ANOVA test anyway, in case shapiro is significant, but plots look good.
@@ -587,33 +570,6 @@ data_timepoint$condition <- factor(data_timepoint$condition)
 # Add IDs because else you can't see in Dunn's test
 data_timepoint <- data_timepoint |> mutate(condition_id = dense_rank(condition))
 
-
-# Check normality: is the histogram normal? Are the residuals normal?
-normality_tp <- function(data_timepoint, growth_var){
-  mu <- mean(data_timepoint[[growth_var]])
-  sigma <- sd(data_timepoint[[growth_var]])
-
-  hi <- ggplot(data_timepoint, aes(x = .data[[growth_var]])) +
-    geom_histogram(bins = 15, fill = "skyblue", color = "black", aes(y = after_stat(density))) +
-    stat_function(fun = dnorm, args = list(mean = mu, sd = sigma), color = "red", linewidth = 1) +
-    theme_minimal()
-
-  qq <- ggplot(data_timepoint, aes(sample = .data[[growth_var]])) +
-       stat_qq() +
-       stat_qq_line() +
-       theme_minimal()
-
-  ggarrange(hi, qq)
-}
-
-# Save normality plot
-save_normality_tp <- function(data_timepoint, growth_var, timepoint){
-  growth_plot <- normality_tp(data_timepoint, growth_var)
-  ggsave(filename = paste0("results/growth/", growth_var, "_normality_", timepoint, ".png"), plot = growth_plot,
-       width = 17, height = 15, dpi = 1000, units = "cm")
-}
-
-
 # For area, length, volume
 for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
     
@@ -623,21 +579,24 @@ for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
   cat(replicate)
 
   # Normality plot: save to file
-  save_normality_tp(data_timepoint, growth_var, timepoint)
+  model  <- lm(reformulate("condition", response = growth_var), data = data_timepoint)
+  save_normality(model, growth_var, timepoint)
+  
   cat("\n\nTest at ")
   cat(timepoint)
   cat(" hours:\nCheck normality:\n")
-  # Check normality with shapiro test. If not normal, can check normality plots.
-  # If normality plots look okay, ANOVA is quite robust.
-  shap <- shapiro.test(data_timepoint[[growth_var]])
+  # Check normality of residuals with shapiro test. If not normal,
+  # can check QQ plot. If it looks okay, ANOVA is quite robust.
+  shap <- shapiro.test(residuals(model))
+
   if(shap$p.value < sig_pval){
-    cat("Data distribution not normal. Please check assumptions at ")
+    cat("Residuals distribution not normal. Please check assumptions at ")
     cat(growth_var)
     cat("_normality_")
     cat(timepoint)
     cat(".png to use ANOVA results.\n\n")
     cat("Otherwise, here is a Kruskal-Wallis test:\n")
-    # Kruskal-Wallis test for non-normal histogram and residuals
+    # Kruskal-Wallis test for non-normal residuals
     tp_kwt <- kruskal.test(reformulate("condition", response = growth_var), data = data_timepoint)
     print(tp_kwt)
     # If Kruskal-Wallis is significant, do post-hoc testing
@@ -655,7 +614,7 @@ for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
     } else {
       cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
     }
-  } else {cat("Data distribution is normal.")}
+  } else {cat("Residuals distribution is normal.")}
 
   # One-way ANOVA
   # Do ANOVA test anyway, in case shapiro is significant, but plots look good.
