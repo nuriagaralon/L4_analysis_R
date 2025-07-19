@@ -169,6 +169,7 @@ surv_plot_set <- ggsurvplot(
   pval = TRUE, # [CUSTOM] Change to FALSE to not display p-value
   xlab = "Time (hour)", # [CUSTOM] Change to change the x axis label
   legend.title = "", # [CUSTOM] Change to change the legend title
+  legend = "right", # [CUSTOM] Legend position: if top it gets very long
   legend.labs = levels(factor(data_surv_set$condition))
 )
 
@@ -186,4 +187,4 @@ ggsave_workaround <- function(g){
 g_to_save <- ggsave_workaround(surv_plot_set)
 
 ggsave(filename = "results/survival/survival_set.png", plot = g_to_save,
-       width = 17, height = 15, dpi = 1000, units = "cm")
+       width = 25, height = 13, dpi = 1000, units = "cm")
