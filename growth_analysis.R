@@ -31,12 +31,14 @@ table_gro <- map(path_gro, function(path){
 
 table_gro <- bind_rows(table_gro)
 
-# Sort data to analyse
-# [CUSTOM] Do we want to normalize? If yes, set TRUE, if no, set FALSE
-normalize <- FALSE
+# Prepare data to analyze and plot
+# [CUSTOM] Do we want to normalize? What is the biological replicate?
+normalize <- FALSE # TRUE if we want to normalize data, FALSE if not
+channels <- TRUE # TRUE if replicates are exp_id-chip-channel, FALSE if they are exp_id
 
 # Takes the value at t0 of each condition for normalizing the data
 # (separated by experiment ID, but channels together, which might need change)
+# Normalization consists of dividing every value by its value at time 0
 t0 <- table_gro |>
   filter(step < 7) |>
   select(-chip, -channel, -chamber, -step, -time, -worm_id) |>
@@ -47,28 +49,38 @@ data_gro <- full_join(table_gro, t0, suffix = c("", ".t0avg"), by = join_by(exp_
 
 # Normalization, select needed columns, add replicate ID.
 # If more than one file, replicate ID is the experiment ID+condition
+# But if channels is TRUE, it is exp_id-chip-channel
 if(length(path_gro) > 1){
-  rep_cols <- c("exp_id", "chip", "channel")
-  replicate <- "Modelled using experiment-chi-channel as replicate."
+  if(channels){
+    rep_cols <- c("exp_id", "chip", "channel")
+    replicate <- "Modelled using experiment-chip-channel as replicate."
+  } else if (!channels) {
+    rep_cols <- c("exp_id", "condition")
+    replicate <- "Modelled using experiment as replicate."
+  }
 # If only one file, replicate ID is the chip_channel combination
 } else if (length(path_gro) == 1) {
   rep_cols <- c("chip", "channel")
   replicate <- "Modelled using chip-channel as replicate."
 }
 
+# If we want normalization, the values are in variable_mod.
+# If not, length_mod is in mm, area_mod in mm^2, volume_mod in (mm^3)
+# If you want units in um, use length, area, volume
 data_gro <- data_gro |>
-  mutate(rep_id = pmap_chr(across(all_of(rep_cols)), ~ paste(..., sep="_"))) |>
-  mutate(day = ceiling(time / (60 * 60 * 24))) |>
-  mutate(hour = ceiling(time / (60 * 60))) |>
-  mutate(h_nr = time / (60 * 60)) |>
-  mutate(length.t0norm = length / length.t0avg,
-         area.t0norm = area / area.t0avg,
-         volume.t0norm = volume / volume.t0avg
+  mutate(
+    rep_id = pmap_chr(across(all_of(rep_cols)), ~ paste(..., sep = "_")),
+    day = ceiling(time / (60 * 60 * 24)),
+    hour = ceiling(time / (60 * 60)),
+    h_nr = time / (60 * 60),
+    length_mod = if (normalize) length / length.t0avg else length / 1000,
+    area_mod = if (normalize) area / area.t0avg else area / 1e6,
+    volume_mod = if (normalize) volume / volume.t0avg else volume / 1e9
   ) |>
   select(condition, step, time, day, hour, h_nr, rep_id,
-    length, length.t0norm,
-    area, area.t0norm,
-    volume, volume.t0norm
+      length, length_mod,
+      area, area_mod,
+      volume, volume_mod
   )
 
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
@@ -163,17 +175,17 @@ plot_sigmoid <- function(fit_column){
 
 # Use the functions to plot area, length, volume, and save plotly
 # Stops you if any model did not converge.
-area_data <- growth_sigmoid(data_gro, area.t0norm)
+area_data <- growth_sigmoid(data_gro, area_mod)
 if(any(map_lgl(area_data$model, is.null))){
   stop("One of the area models is NULL, please rerun with a different C_start (try value_for_c = 40)")
 }
 
-length_data <- growth_sigmoid(data_gro, length.t0norm)
+length_data <- growth_sigmoid(data_gro, length_mod)
 if(any(map_lgl(length_data$model, is.null))){
   stop("One of the length models is NULL, please rerun with a different C_start (try value_for_c = 40)")
 }
 
-volume_data <- growth_sigmoid(data_gro, volume.t0norm)
+volume_data <- growth_sigmoid(data_gro, volume_mod)
 if(any(map_lgl(volume_data$model, is.null))){
   stop("One of the volume models is NULL, please rerun with a different C_start (try value_for_c = 40)")
 }
@@ -263,13 +275,13 @@ save_normality <- function(model, growth_var, param){
 }
 
 # Area, length, volume
-area_summ <- growth_summary(data_gro, area.t0norm)
+area_summ <- growth_summary(data_gro, area_mod)
 area_AUC <- growth_AUC(area_summ)
 
-length_summ <- growth_summary(data_gro, length.t0norm)
+length_summ <- growth_summary(data_gro, length_mod)
 length_AUC <- growth_AUC(length_summ)
 
-volume_summ <- growth_summary(data_gro, volume.t0norm)
+volume_summ <- growth_summary(data_gro, volume_mod)
 volume_AUC <- growth_AUC(volume_summ)
 
 # Save statistical tests to file
@@ -334,7 +346,7 @@ for(growth_var in names(growth_list)){
     print(AUC_dnt)
     cat("\nResults from Tukey's test:\n")
     AUC_thsd <- TukeyHSD(AUC_anova)
-    print(AUC_thsd)
+    print(AUC_thsd$condition)
   } else {
     cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
   }
@@ -531,7 +543,7 @@ for(growth_var in names(growth_params_list)){
       print(param_dnt)
       cat("\nResults from Tukey's test:\n")
       param_thsd <- TukeyHSD(param_anova)
-      print(param_thsd)
+      print(param_thsd$condition)
     } else {
       cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
     }
@@ -552,16 +564,16 @@ data_timepoint <- data_gro |>
     length = mean(length),
     area = mean(area),
     volume = mean(volume),
-    length.t0norm = mean(length.t0norm),
-    area.t0norm = mean(area.t0norm),
-    volume.t0norm = mean(volume.t0norm)
+    length_mod = mean(length_mod),
+    area_mod = mean(area_mod),
+    volume_mod = mean(volume_mod)
   ) |> ungroup()
 
 # Set condition as factor
 data_timepoint$condition <- factor(data_timepoint$condition)
 
 # For area, length, volume
-for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
+for(growth_var in c("area_mod", "length_mod", "volume_mod")){
     
   # Sink (save) results
   sink(paste0("results/growth/growth_", timepoint, "_", growth_var, ".txt"))
@@ -620,7 +632,7 @@ for(growth_var in c("area.t0norm", "length.t0norm", "volume.t0norm")){
     cat("\nResults from Tukey's test:\n")
     tp_thsd <- TukeyHSD(tp_anova)
     assign(paste0("tp_thsd_", growth_var), as.data.frame(tp_dnt[[1]]))
-    print(tp_thsd)
+    print(tp_thsd$condition)
   } else {
     cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
   }
@@ -637,16 +649,16 @@ summ_timepoint <- data_timepoint |>
     mean_length = mean(length),
     mean_area = mean(area),
     mean_volume = mean(volume),
-    mean_length.t0norm = mean(length.t0norm),
-    mean_area.t0norm = mean(area.t0norm),
-    mean_volume.t0norm = mean(volume.t0norm),
+    mean_length_mod = mean(length_mod),
+    mean_area_mod = mean(area_mod),
+    mean_volume_mod = mean(volume_mod),
     n = n(),
     sem_length = sd(length)/sqrt(n),
     sem_area = sd(area)/sqrt(n),
     sem_volume = sd(volume)/sqrt(n),
-    sem_length.t0norm = sd(length.t0norm)/sqrt(n),
-    sem_area.t0norm = sd(area.t0norm)/sqrt(n),
-    sem_volume.t0norm = sd(volume.t0norm)/sqrt(n)
+    sem_length_mod = sd(length_mod)/sqrt(n),
+    sem_area_mod = sd(area_mod)/sqrt(n),
+    sem_volume_mod = sd(volume_mod)/sqrt(n)
     )
 
 # Plotting function
@@ -712,32 +724,32 @@ plot_signif_dnn <- function(tp_dnn_var, plot_var, error_var){
 
 
 # Plot and save plots
-# [CUSTOM] tp_dnt_area.t0norm can be changed to tp_thsd_area.t0norm for Tukey significant values instead
+# [CUSTOM] tp_dnt_area_mod can be changed to tp_thsd_area_mod for Tukey significant values instead
 # [CUSTOM] we can also use plot_signif_dnn if we want to use Dunn's test from Kruskal-Wallis post-hoc
 ## plot_signif_dnn example:
-#tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
-#if (exists("tp_dnn_area.t0norm")){
-#  tp_area <- tp_area + plot_signif_dnn(tp_dnn_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
+#tp_area <- plot_timepoint(mean_area_mod, sem_area_mod) + ylab("Area (A. U.)")
+#if (exists("tp_dnn_area_mod")){
+#  tp_area <- tp_area + plot_signif_dnn(tp_dnn_area_mod, "mean_area_mod", "sem_area_mod")
 #}
 
-tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
-if (exists("tp_dnt_area.t0norm")){
-  tp_area <- tp_area + plot_signif(tp_dnt_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
+tp_area <- plot_timepoint(mean_area_mod, sem_area_mod) + ylab("Area (A. U.)")
+if (exists("tp_dnt_area_mod")){
+  tp_area <- tp_area + plot_signif(tp_dnt_area_mod, "mean_area_mod", "sem_area_mod")
 }
 
 ggsave(filename = paste0("results/growth/area_", timepoint, ".png"), plot = tp_area,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
-tp_length <- plot_timepoint(mean_length.t0norm, sem_length.t0norm) + ylab("Length (A. U.)")
-if (exists("tp_dnt_length.t0norm")){
-  tp_length <- tp_length + plot_signif(tp_dnt_length.t0norm, "mean_length.t0norm", "sem_length.t0norm")
+tp_length <- plot_timepoint(mean_length_mod, sem_length_mod) + ylab("Length (A. U.)")
+if (exists("tp_dnt_length_mod")){
+  tp_length <- tp_length + plot_signif(tp_dnt_length_mod, "mean_length_mod", "sem_length_mod")
 }
 ggsave(filename = paste0("results/growth/length_", timepoint, ".png"), plot = tp_length,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
-tp_volume <- plot_timepoint(mean_volume.t0norm, sem_volume.t0norm) + ylab("Volume (A. U.)")
-if (exists("tp_dnt_volume.t0norm")){
-  tp_volume <- tp_volume + plot_signif(tp_dnt_volume.t0norm, "mean_volume.t0norm", "sem_volume.t0norm")
+tp_volume <- plot_timepoint(mean_volume_mod, sem_volume_mod) + ylab("Volume (A. U.)")
+if (exists("tp_dnt_volume_mod")){
+  tp_volume <- tp_volume + plot_signif(tp_dnt_volume_mod, "mean_volume_mod", "sem_volume_mod")
 }
 ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp_volume,
        width = 17, height = 17, dpi = 1000, units = "cm")
@@ -765,7 +777,7 @@ ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp
 #   unlist()
 # 
 ## Unfinished nlme
-# model <- nlme(area.t0norm ~ A / (1 + exp(-B * (hour - C))),
+# model <- nlme(area_mod ~ A / (1 + exp(-B * (hour - C))),
 #               fixed = A + B + C ~ condition,
 #               random = A + B + C ~ 1 | subject,
 #               data = data_gro,
@@ -798,12 +810,12 @@ ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp
 #null_data <- data_gro |>
 #    group_by(hour) |>
 #    summarise(
-#        mean = mean(area.t0norm),
-#        sd = sd(area.t0norm),
+#        mean = mean(area_mod),
+#        sd = sd(area_mod),
 #        n = n(),
 #        .groups = "drop"
 #    )
 ## Unfinished gnls
-#area_null <- gnls(area.t0norm ~ A / (1 + exp(-B * (hour - C))),
+#area_null <- gnls(area_mod ~ A / (1 + exp(-B * (hour - C))),
 #                    data = data_gro,
 #                    start = baseline)
