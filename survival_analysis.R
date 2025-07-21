@@ -176,6 +176,14 @@ surv_plot_set <- ggsurvplot(
 # [O] To see the plot
 surv_plot_set
 
+# [O] To get a plotly
+# Note: Plotly does not work well with confidence intervals,
+# so it will throw warnings and will not plot them
+surv_set_plotly <- ggplotly(surv_plot_set[[1]])
+
+# Save plotly plot as html
+htmlwidgets::saveWidget(as_widget(surv_set_plotly), "results/survival/survival_set.html")
+
 # [O] Save plot of the set of conds
 ggsave_workaround <- function(g){
   survminer:::.build_ggsurvplot(x = g,

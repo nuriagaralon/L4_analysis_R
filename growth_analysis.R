@@ -31,7 +31,10 @@ table_gro <- map(path_gro, function(path){
 
 table_gro <- bind_rows(table_gro)
 
-# Sort data to plot
+# Sort data to analyse
+# [CUSTOM] Do we want to normalize? If yes, set TRUE, if no, set FALSE
+normalize <- FALSE
+
 # Takes the value at t0 of each condition for normalizing the data
 # (separated by experiment ID, but channels together, which might need change)
 t0 <- table_gro |>
@@ -45,8 +48,8 @@ data_gro <- full_join(table_gro, t0, suffix = c("", ".t0avg"), by = join_by(exp_
 # Normalization, select needed columns, add replicate ID.
 # If more than one file, replicate ID is the experiment ID+condition
 if(length(path_gro) > 1){
-  rep_cols <- c("exp_id", "condition")
-  replicate <- "Modelled using experiment as replicate."
+  rep_cols <- c("exp_id", "chip", "channel")
+  replicate <- "Modelled using experiment-chi-channel as replicate."
 # If only one file, replicate ID is the chip_channel combination
 } else if (length(path_gro) == 1) {
   rep_cols <- c("chip", "channel")
@@ -678,7 +681,7 @@ plot_signif <- function(tp_dnt_var, plot_var, error_var){
   plot_tp <- geom_signif(comparison = comparisons,
                          annotations = sig_data$sigval,
                          y_position = y_positions,
-                         tip_length = gap / 4)
+                         tip_length = 0.01)
   plot_tp
 }
 
@@ -710,6 +713,12 @@ plot_signif_dnn <- function(tp_dnn_var, plot_var, error_var){
 
 # Plot and save plots
 # [CUSTOM] tp_dnt_area.t0norm can be changed to tp_thsd_area.t0norm for Tukey significant values instead
+# [CUSTOM] we can also use plot_signif_dnn if we want to use Dunn's test from Kruskal-Wallis post-hoc
+## plot_signif_dnn example:
+#tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
+#if (exists("tp_dnn_area.t0norm")){
+#  tp_area <- tp_area + plot_signif_dnn(tp_dnn_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
+#}
 
 tp_area <- plot_timepoint(mean_area.t0norm, sem_area.t0norm) + ylab("Area (A. U.)")
 if (exists("tp_dnt_area.t0norm")){
@@ -733,11 +742,7 @@ if (exists("tp_dnt_volume.t0norm")){
 ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp_volume,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
-# [CUSTOM] we can also use plot_signif_dnn if we want to use Dunn's test from Kruskal-Wallis post-hoc
-## plot_signif_dnn example:
-#if (exists("tp_dnn_area.t0norm")){
-#  tp_area <- tp_area + plot_signif_dnn(tp_dnn_area.t0norm, "mean_area.t0norm", "sem_area.t0norm")
-#}
+
 
 
 # [UNFINISHED] NLME OR GNLS MODEL
