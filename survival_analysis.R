@@ -166,6 +166,7 @@ surv_plot_set <- ggsurvplot(
   km_fit_set,
   data = data_surv_set,
   conf.int = TRUE, # [CUSTOM] Set to FALSE for no confidence intervals
+  conf.int.style = "ribbon", # [CUSTOM] Change to "step" for plotly
   pval = TRUE, # [CUSTOM] Change to FALSE to not display p-value
   xlab = "Time (hour)", # [CUSTOM] Change to change the x axis label
   legend.title = "", # [CUSTOM] Change to change the legend title
