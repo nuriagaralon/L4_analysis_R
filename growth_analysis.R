@@ -36,6 +36,21 @@ table_gro <- bind_rows(table_gro)
 normalize <- FALSE # TRUE if we want to normalize data, FALSE if not
 channels <- TRUE # TRUE if replicates are exp_id-chip-channel, FALSE if they are exp_id
 
+# Set y labels for plot:
+if(normalize){
+  lab_amod <- "Area (A. U.)"
+  lab_lmod <- "Length (A. U.)"
+  lab_vmod <- "Volume (A. U.)"
+} else {
+  lab_amod <- "Area (mm\u00b2)" # mm²
+  lab_lmod <- "Length (mm)"
+  lab_vmod <- "Volume (mm\u00b3)" # mm³
+}
+lab_a <- "Area (\u03bcm\u00b2)"  # μm²
+lab_l <- "Length (\u03bcm)"  # μm
+lab_v <- "Volume (\u03bcm\u00b3)"  # μm³
+
+
 # Takes the value at t0 of each condition for normalizing the data
 # (separated by experiment ID, but channels together, which might need change)
 # Normalization consists of dividing every value by its value at time 0
@@ -175,6 +190,9 @@ plot_sigmoid <- function(fit_column){
 
 # Use the functions to plot area, length, volume, and save plotly
 # Stops you if any model did not converge.
+# [CUSTOM] Change area_mod, length_mod, volume_mod to area, length, volume
+# for plotting raw data in um. Also change ylabs below (when using plot_sigmoid function).
+
 area_data <- growth_sigmoid(data_gro, area_mod)
 if(any(map_lgl(area_data$model, is.null))){
   stop("One of the area models is NULL, please rerun with a different C_start (try value_for_c = 40)")
@@ -213,17 +231,19 @@ if(any(map_lgl(volume_data$model, is.null))){
 #    )
 
 # Plot and save plotly
-area_ggplot <- plot_sigmoid(area_data) + ylab("Area (A. U.)")
+# [CUSTOM] Here you can change ylabs. If plotting area, length, volume,
+# change lab_amod, lab_lmod, lab_vmod to lab_a, lab_l, lab_v
+area_ggplot <- plot_sigmoid(area_data) + ylab(lab_amod)
 area_plotly <- ggplotly(area_ggplot)
 
 htmlwidgets::saveWidget(as_widget(area_plotly), "results/growth/growth_area.html")
 
-length_ggplot <- plot_sigmoid(length_data) + ylab("Length (A. U.)")
+length_ggplot <- plot_sigmoid(length_data) + ylab(lab_lmod)
 length_plotly <- ggplotly(length_ggplot)
 
 htmlwidgets::saveWidget(as_widget(length_plotly), "results/growth/growth_length.html")
 
-volume_ggplot <- plot_sigmoid(volume_data) + ylab("Volume (A. U.)")
+volume_ggplot <- plot_sigmoid(volume_data) + ylab(lab_vmod)
 volume_plotly <- ggplotly(volume_ggplot)
 
 htmlwidgets::saveWidget(as_widget(volume_plotly), "results/growth/growth_volume.html")
@@ -275,6 +295,8 @@ save_normality <- function(model, growth_var, param){
 }
 
 # Area, length, volume
+# [CUSTOM] Change area_mod, length_mod, volume_mod to area, length, volume
+# for analysing raw data in um. Also change ylabs below (when using plot_rep_sigmoid function)
 area_summ <- growth_summary(data_gro, area_mod)
 area_AUC <- growth_AUC(area_summ)
 
@@ -346,7 +368,13 @@ for(growth_var in names(growth_list)){
     print(AUC_dnt)
     cat("\nResults from Tukey's test:\n")
     AUC_thsd <- TukeyHSD(AUC_anova)
-    print(AUC_thsd$condition)
+    AUC_thsd <- as.data.frame(AUC_thsd$condition) |>
+      mutate(p.adj.signif = case_when(`p adj` < 0.001 ~ "***",
+                                      `p adj` < 0.01 ~ "**",
+                                      `p adj` < 0.05 ~ "*",
+                                      `p adj` < 0.1 ~ ".",
+                                      `p adj` >= 0.1 ~ "ns"))
+    print(AUC_thsd)
   } else {
     cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
   }
@@ -453,17 +481,19 @@ plot_rep_sigmoid <- function(params_fit){
 }
 
 # Plot and save plotly
-area_rep_ggplot <- plot_rep_sigmoid(area_params_fit) + ylab("Area (A. U.)")
+# [CUSTOM] Here you can change ylabs. If plotting area, length, volume,
+# change lab_amod, lab_lmod, lab_vmod to lab_a, lab_l, lab_v
+area_rep_ggplot <- plot_rep_sigmoid(area_params_fit) + ylab(lab_amod)
 area_rep_plotly <- ggplotly(area_rep_ggplot)
 
 htmlwidgets::saveWidget(as_widget(area_rep_plotly), "results/growth/growth_area_rep.html")
 
-length_rep_ggplot <- plot_rep_sigmoid(length_params_fit) + ylab("Length (A. U.)")
+length_rep_ggplot <- plot_rep_sigmoid(length_params_fit) + ylab(lab_lmod)
 length_rep_plotly <- ggplotly(length_rep_ggplot)
 
 htmlwidgets::saveWidget(as_widget(length_rep_plotly), "results/growth/growth_length_rep.html")
 
-volume_rep_ggplot <- plot_rep_sigmoid(volume_params_fit) + ylab("Volume (A. U.)")
+volume_rep_ggplot <- plot_rep_sigmoid(volume_params_fit) + ylab(lab_vmod)
 volume_rep_plotly <- ggplotly(volume_rep_ggplot)
 
 htmlwidgets::saveWidget(as_widget(volume_rep_plotly), "results/growth/growth_volume_rep.html")
@@ -543,7 +573,13 @@ for(growth_var in names(growth_params_list)){
       print(param_dnt)
       cat("\nResults from Tukey's test:\n")
       param_thsd <- TukeyHSD(param_anova)
-      print(param_thsd$condition)
+      param_thsd <- as.data.frame(param_thsd$condition) |>
+        mutate(p.adj.signif = case_when(`p adj` < 0.001 ~ "***",
+                                        `p adj` < 0.01 ~ "**",
+                                        `p adj` < 0.05 ~ "*",
+                                        `p adj` < 0.1 ~ ".",
+                                        `p adj` >= 0.1 ~ "ns"))
+      print(param_thsd)
     } else {
       cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
     }
@@ -573,6 +609,8 @@ data_timepoint <- data_gro |>
 data_timepoint$condition <- factor(data_timepoint$condition)
 
 # For area, length, volume
+# [CUSTOM] Change area_mod, length_mod, volume_mod to area, length, volume
+# for plotting raw data in um.
 for(growth_var in c("area_mod", "length_mod", "volume_mod")){
     
   # Sink (save) results
@@ -631,8 +669,14 @@ for(growth_var in c("area_mod", "length_mod", "volume_mod")){
     print(tp_dnt)
     cat("\nResults from Tukey's test:\n")
     tp_thsd <- TukeyHSD(tp_anova)
-    assign(paste0("tp_thsd_", growth_var), as.data.frame(tp_dnt[[1]]))
-    print(tp_thsd$condition)
+    tp_thsd <- as.data.frame(tp_thsd$condition) |>
+      mutate(p.adj.signif = case_when(`p adj` < 0.001 ~ "***",
+                                      `p adj` < 0.01 ~ "**",
+                                      `p adj` < 0.05 ~ "*",
+                                      `p adj` < 0.1 ~ ".",
+                                      `p adj` >= 0.1 ~ "ns"))
+    assign(paste0("tp_thsd_", growth_var), tp_thsd)
+    print(tp_thsd)
   } else {
     cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
   }
@@ -671,68 +715,83 @@ plot_timepoint <- function(plot_var, error_var){
 }
 
 # Plotting significant values
-plot_signif <- function(tp_dnt_var, plot_var, error_var){
-  sig_data <- tp_dnt_var |>
-    filter(pval < sig_pval) |>
-    rownames_to_column(var = "condition") |>
-    mutate(sigval = case_when(pval < 0.001 ~ "***",
-                              pval < 0.01 ~ "**",
-                              pval < 0.05 ~ "*",
-                              pval >= 0.05 ~ "NS"))
-  
+# Function to get comparison names
+cond_names <- data_gro |> select(condition) |> distinct()
+cond_names <- as.character(cond_names$condition)
+
+extract_comp_from_cond <- function(comparison, cond_names){
+  matches <- cond_names[map_lgl(cond_names, ~ str_detect(comparison, fixed(.x)))]
+  if(length(matches) == 2){
+    return(as.list(matches))
+  } else {
+    warning(paste("Could not uniquely extract 2 groups from:", comparison))
+    return(list(NA, NA))
+  }
+}
+
+# Function to plot
+plot_signif <- function(tp_posthoc_var, plot_var, error_var){
+  # 1. Get the sig_data
+  # If it comes from Dunnett's test, we need to add sig stars
+  if("pval" %in% colnames(tp_posthoc_var)){
+    sig_data <- tp_posthoc_var |>
+      filter(pval < sig_pval) |>
+      rownames_to_column(var = "condition") |>
+      mutate(p.adj.signif = case_when(pval < 0.001 ~ "***",
+                                      pval < 0.01 ~ "**",
+                                      pval < 0.05 ~ "*",
+                                      pval >= 0.05 ~ "ns"))
+  # For Dunn just filter
+  } else if ("group1" %in% colnames(tp_posthoc_var)) {
+    sig_data <- tp_posthoc_var |>
+      filter(!(p.adj.signif %in% c("ns", ".")))
+  # For Tukey, filter and get row names in condition
+  } else {
+    sig_data <- tp_posthoc_var |>
+      filter(!(p.adj.signif %in% c("ns", "."))) |>
+      rownames_to_column(var = "condition")
+  }
+
+  # 2. Return NULL if no significant comparisons
   if (nrow(sig_data) == 0) {
     return(NULL)  # nothing to add to plot
   }
+  
+  # 3. Get comparison names 
+  # If it comes from Dunn's test
+  if("group1" %in% colnames(tp_posthoc_var)){
+    comparisons <- sig_data |>
+      mutate(pair = pmap(list(group1, group2), c)) |> pull(pair)
+  # For Dunnett and Tukey
+  } else {
+    comparisons <- map(sig_data$condition, ~ extract_comp_from_cond(.x, cond_names))
+    comparisons <- map(comparisons, unlist)
+  }
 
+  # 4. Calculate position of significance stars in plot
   max_y <- max(summ_timepoint[[plot_var]] + summ_timepoint[[error_var]])
   min_y <- min(summ_timepoint[[plot_var]] - summ_timepoint[[error_var]])
   gap <- 0.1 * (max_y - min_y)
-    
-  comparisons <- str_split(sig_data$condition, pattern = regex("-(?=[^-]+$)"))
   y_positions <- seq(from = max_y + gap, by = gap, length.out = length(comparisons))
+
+  # 5. Build geom_signif for ggplot
   plot_tp <- geom_signif(comparison = comparisons,
-                         annotations = sig_data$sigval,
+                         annotations = sig_data$p.adj.signif,
                          y_position = y_positions,
                          tip_length = 0.01)
   plot_tp
 }
 
-# Plotting significant values from Dunn's test
-plot_signif_dnn <- function(tp_dnn_var, plot_var, error_var){
-  sig_data <- tp_dnn_var |>
-    filter(!(p.adj.signif == "ns"))
-  
-  if (nrow(sig_data) == 0) {
-    return(NULL)  # nothing to add to plot
-  }
-
-  max_y <- max(summ_timepoint[[plot_var]] + summ_timepoint[[error_var]])
-  min_y <- min(summ_timepoint[[plot_var]] - summ_timepoint[[error_var]])
-  gap <- 0.1 * (max_y - min_y)
-    
-  comparisons <- sig_data |>
-    mutate(pair = pmap(list(group1, group2), c)) |> pull(pair)
-  
-  y_positions <- seq(from = max_y + gap, by = gap, length.out = length(comparisons))
-  plot_tp <- geom_signif(comparison = comparisons,
-                         annotations = sig_data$p.adj.signif,
-                         y_position = y_positions,
-                         tip_length = gap / 4)
-  plot_tp
-}
-
-
-
 # Plot and save plots
-# [CUSTOM] tp_dnt_area_mod can be changed to tp_thsd_area_mod for Tukey significant values instead
-# [CUSTOM] we can also use plot_signif_dnn if we want to use Dunn's test from Kruskal-Wallis post-hoc
-## plot_signif_dnn example:
-#tp_area <- plot_timepoint(mean_area_mod, sem_area_mod) + ylab("Area (A. U.)")
-#if (exists("tp_dnn_area_mod")){
-#  tp_area <- tp_area + plot_signif_dnn(tp_dnn_area_mod, "mean_area_mod", "sem_area_mod")
-#}
+# [CUSTOM] tp_dnt_area_mod plots Dunnet values and can be changed to 
+# tp_thsd_area_mod for Tukey significant values
+# tp_dnn_area_mod for Dunn significant values
 
-tp_area <- plot_timepoint(mean_area_mod, sem_area_mod) + ylab("Area (A. U.)")
+# [CUSTOM] Change area_mod, length_mod, volume_mod to area, length, volume
+# if statistical analysis was done with raw data in um.
+# Also change ylabs. Change lab_amod, lab_lmod, lab_vmod to lab_a, lab_l, lab_v
+
+tp_area <- plot_timepoint(mean_area_mod, sem_area_mod) + ylab(lab_amod)
 if (exists("tp_dnt_area_mod")){
   tp_area <- tp_area + plot_signif(tp_dnt_area_mod, "mean_area_mod", "sem_area_mod")
 }
@@ -740,14 +799,14 @@ if (exists("tp_dnt_area_mod")){
 ggsave(filename = paste0("results/growth/area_", timepoint, ".png"), plot = tp_area,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
-tp_length <- plot_timepoint(mean_length_mod, sem_length_mod) + ylab("Length (A. U.)")
+tp_length <- plot_timepoint(mean_length_mod, sem_length_mod) + ylab(lab_lmod)
 if (exists("tp_dnt_length_mod")){
   tp_length <- tp_length + plot_signif(tp_dnt_length_mod, "mean_length_mod", "sem_length_mod")
 }
 ggsave(filename = paste0("results/growth/length_", timepoint, ".png"), plot = tp_length,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
-tp_volume <- plot_timepoint(mean_volume_mod, sem_volume_mod) + ylab("Volume (A. U.)")
+tp_volume <- plot_timepoint(mean_volume_mod, sem_volume_mod) + ylab(lab_vmod)
 if (exists("tp_dnt_volume_mod")){
   tp_volume <- tp_volume + plot_signif(tp_dnt_volume_mod, "mean_volume_mod", "sem_volume_mod")
 }
