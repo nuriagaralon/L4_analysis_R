@@ -181,7 +181,7 @@ plot_sigmoid <- function(fit_column){
   column_ggplot <- ggplot(plot_column, aes(x = hour, y = mean, color = condition)) + 
     geom_point(size = 1) + #[CUSTOM] Size is 1 to have small points
     geom_line(aes(y = fitted), linewidth = 1) + #[CUSTOM] Linewidth is 1 to have a slightly thicker line
-    xlab("Time (hour)") +
+    xlab("Time (hour)") + # [CUSTOM] Change to change the x axis label
     theme_minimal() +
     labs(color = "Condition") +
     scale_color_igv() #[CUSTOM] Color scale can be changed.
@@ -474,7 +474,7 @@ plot_rep_sigmoid <- function(params_fit){
   
   column_ggplot <- ggplot(plot_column, aes(x = h_nr, y = fitted, color = rep_id)) + 
     geom_line() +
-    xlab("Time (hour)") +
+    xlab("Time (hour)") + # [CUSTOM] Change to change the x axis label
     labs(color = "Replicate") +
     theme_minimal()
   column_ggplot
@@ -708,10 +708,10 @@ summ_timepoint <- data_timepoint |>
 # Plotting function
 plot_timepoint <- function(plot_var, error_var){
   ggplot(summ_timepoint, aes(x = condition, y = {{plot_var}})) +
-    geom_point(size = 2) +
+    geom_point(size = 2) + # [CUSTOM] Change to change point size
     geom_errorbar(aes(ymin = {{plot_var}}-{{error_var}}, ymax = {{plot_var}}+{{error_var}})) +
-    scale_x_discrete(guide = guide_axis(angle = 90)) +
-    xlab("")
+    scale_x_discrete(guide = guide_axis(angle = 90)) + # [CUSTOM] Change to change angle of text of x axis
+    xlab("") # [CUSTOM] Change to change the x axis label
 }
 
 # Plotting significant values
