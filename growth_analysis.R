@@ -716,11 +716,9 @@ plot_timepoint <- function(plot_var, error_var){
 
 # Plotting significant values
 # Function to get comparison names
-cond_names <- data_gro |> select(condition) |> distinct()
-cond_names <- as.character(cond_names$condition)
-
-extract_comp_from_cond <- function(comparison, cond_names){
-  matches <- cond_names[map_lgl(cond_names, ~ str_detect(comparison, fixed(.x)))]
+# We already have the variable condition_levels from when we extracted the control
+extract_comp_from_cond <- function(comparison, condition_levels){
+  matches <- condition_levels[map_lgl(condition_levels, ~ str_detect(comparison, fixed(.x)))]
   if(length(matches) == 2){
     return(as.list(matches))
   } else {
@@ -764,7 +762,7 @@ plot_signif <- function(tp_posthoc_var, plot_var, error_var){
       mutate(pair = pmap(list(group1, group2), c)) |> pull(pair)
   # For Dunnett and Tukey
   } else {
-    comparisons <- map(sig_data$condition, ~ extract_comp_from_cond(.x, cond_names))
+    comparisons <- map(sig_data$condition, ~ extract_comp_from_cond(.x, condition_levels))
     comparisons <- map(comparisons, unlist)
   }
 
