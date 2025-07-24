@@ -101,7 +101,7 @@ data_gro <- data_gro |>
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
 data_gro <- data_gro |> filter(!str_detect(condition, "FUdR"))
 
-# Filter out from wiz file, where they starved for a weekend
+# [CUSTOM] Filter out from wiz file, where they starved for a weekend
 data_gro <- data_gro |>
   filter(!(str_detect(rep_id, "wiz6YHzJUXFL") & hour >= 395))
 
@@ -254,7 +254,7 @@ sig_pval <- 0.05
 
 # [CUSTOM] Set control variable: Detects "Water"
 condition_levels <- levels(data_gro$condition)
-control <- condition_levels[str_detect(condition_levels, "Water")]
+control <- condition_levels[str_detect(condition_levels, fixed("Water"))]
 
 # Allows wider lines and enough rows when saving statistics results to text file
 options(width = 1000)

@@ -92,7 +92,7 @@ sig_pval <- 0.05
 
 # [CUSTOM] Set control variable: Detects "Water"
 condition_levels <- levels(egg_table$condition)
-control <- condition_levels[str_detect(condition_levels, "Water")]
+control <- condition_levels[str_detect(condition_levels, fixed("Water"))]
 
 
 # Check normality: Are the residuals normal?
