@@ -8,6 +8,9 @@ library(tidyverse)
 library(readxl)
 library(DescTools)
 library(ggpubr)
+library(ggfortify)
+library(plotly)
+library(ggsci)
 
 # General raw data is confusing so we are using aggregated data
 # [CUSTOM] Do we want to use channel as a replicate?
@@ -94,18 +97,20 @@ sig_pval <- 0.05
 condition_levels <- levels(egg_table$condition)
 control <- condition_levels[str_detect(condition_levels, fixed("Water"))]
 
+# Normality plot function
+save_normality <- function(model, egg_var){
+  qq <- ggqqplot(residuals(model))
+  sl <- autoplot(model, which = 3)[[1]]
+  egg_plot <- ggarrange(sl, qq)
+  ggsave(filename = paste0("results/egg/", egg_var, "_normality.png"), plot = egg_plot,
+       width = 20, height = 15, dpi = 1000, units = "cm")
+}
+
 
 # Check normality: Are the residuals normal?
 # Save normality plot
 model  <- lm(`Emergence hour_mean` ~ condition, data = egg_table)
-
-qq <- ggqqplot(residuals(model))
-sl <- autoplot(model, which = 3)[[1]]
-egge_norm_plot <- ggarrange(sl, qq)
-
-ggsave(filename = paste0("results/egg/egg_emergence_normality.png"),
-       plot = egge_norm_plot, width = 20, height = 15,
-       dpi = 1000, units = "cm")
+save_normality(model, "egg_emergence")
 
 # Check normality of residuals with shapiro test. If not normal,
 # can check QQ plot. If it looks okay, ANOVA is quite robust.
@@ -322,7 +327,7 @@ egg_count_data <- egg_count_data |> filter(!str_detect(condition, "FUdR"))
 # Set condition as factor
 egg_count_data$condition <- as.factor(egg_count_data$condition)
 
-# Total egg count
+# Get Total egg count
 egg_total <- egg_count_data |>
   group_by(rep_id) |>
   summarise(eggs_total = sum(mean_eggs_per_worm))
@@ -333,59 +338,125 @@ egg_count_table <- full_join(egg_count_data, egg_total, by = join_by(rep_id))
 egg_count_table <- egg_count_table |>
   mutate(
     egg_norm = mean_eggs_per_worm / eggs_total,
-    day_hour = ceiling(Hour / 24) * 24
+    day_hour = ceiling(Hour / 24) * 24,
+    day = ceiling(Hour / 24)
   )
 
-# Plot
-# Mean, std, n of condition
+# Plot of egg_counts
+# Summarized data per day
 egg_counts_day <- egg_count_table |>
-  group_by(day_hour, condition) |>
+  group_by(day, condition) |>
   summarise(
     mean = mean(mean_eggs_per_worm),
     std = sd(mean_eggs_per_worm),
     mean_norm = mean(egg_norm),
     std_norm = sd(egg_norm),
-    n = n() 
+    n = n()
   ) |>
   mutate(
     sem = std / sqrt(n),
     sem_norm = std_norm / sqrt(n)
   )
 
-egg_counts <- egg_count_table |>
-  group_by(Hour, condition) |>
-  summarise(
-    mean = mean(mean_eggs_per_worm),
-    std = sd(mean_eggs_per_worm),
-    mean_norm = mean(egg_norm),
-    std_norm = sd(egg_norm),
-    n = n() 
-  ) |>
-  mutate(
-    sem = std / sqrt(n),
-    sem_norm = std_norm / sqrt(n)
-  )
-
-# 
-egg_count_plot <- ggplot(egg_counts_day, aes(x = day_hour, y = mean_norm, color = condition)) +
+# Plot and save plotly
+egg_count_plot <- ggplot(egg_counts_day, aes(x = day, y = mean_norm, color = condition)) +
   geom_line() +
   geom_point() +
-  geom_errorbar(aes(ymin = mean_norm-sem_norm, ymax = mean_norm+sem_norm))
+  geom_errorbar(aes(ymin = mean_norm-sem_norm, ymax = mean_norm+sem_norm)) +
+  scale_color_igv()  + #[CUSTOM] Color scale can be changed.
+  xlab("Time (days)") + # [CUSTOM] Change to change the x axis label
+  ylab("Normalized egg count (A. U.)") + # [CUSTOM] Change to change the y axis label
+  labs(color = "Condition")
 
-ggplotly(egg_count_plot)
+egg_count_plotly <- ggplotly(egg_count_plot)
 
-# one-way anova of max(mean_norm)
+htmlwidgets::saveWidget(as_widget(egg_count_plotly), "results/egg/egg_count.html")
+
+
+# Statistical analysis
+# Get data: maximum values of egg laying
+# As normalization is per rep_id, this contains maximums
+# of both normalized and raw data
 data_max <- egg_count_table |>
   group_by(rep_id) |>
   filter(mean_eggs_per_worm == max(mean_eggs_per_worm))
 
-# one-way anova of max(mean)
- 
+# Testing Maximum eggs laid, Maximum normalized eggs laid, and time at maximum
+egg_list <- list(
+  mean_eggs_per_worm = "Maximum egg laying value",
+  egg_norm = "Maximum normalized egg laying value",
+  Hour = "Time at maximum egg laying"
+) 
 
-# one-way anova of time at max(mean_norm)
+# For mean_eggs_per_worm, egg_norm (normalized eggs), Hour
+for(egg_var in names(egg_list)){
 
-# mixed-measures two-way anova of mean_norm vs time
+  # Normality plot: save to file
+  model  <- lm(reformulate("condition", response = egg_var), data = data_max)
+  save_normality(model, egg_var)
 
-# However, egg counts look quite different between replicates, maybe should just anova test
-# the maximum value (max(mean)) or the nematode age (time at max(mean))
-# like this paper: DOI: 10.1186/1472-6785-9-14
+  # Sink (save) results
+  sink(paste0("results/egg/egg_count_", egg_var, ".txt"))
+  # Print what kind of replicate we are using
+  cat(replicate)
+  cat("\n\nTest ")
+  cat(egg_list[[egg_var]])
+  cat(":\nCheck normality:\n")
+  # Check normality of residuals with shapiro test. If not normal,
+  # can check QQ plot. If it looks okay, ANOVA is quite robust.
+  shap <- shapiro.test(residuals(model))
+
+  if(shap$p.value < sig_pval){
+    cat("Residuals distribution not normal. Please check assumptions at ")
+    cat(egg_var)
+    cat("_normality.png to use ANOVA results.\n\n")
+    cat("Otherwise, here is a Kruskal-Wallis test:\n")
+    # Kruskal-Wallis test for non-normal residuals
+    eggc_kwt <- kruskal.test(reformulate("condition", response = egg_var), data = data_max)
+    print(eggc_kwt)
+
+    # If Kruskal-Wallis is significant, do post-hoc testing
+    if (eggc_kwt$p.value < sig_pval){
+      # Dunn's test, equivalent to TukeyHSD
+      cat("\nResults from Dunn's test:\n")
+      eggc_dnn <- dunn_test(data_max, reformulate("condition", response = egg_var), p.adjust.method = "holm") #Change method to "BH" for less stringency
+      print(as.data.frame(eggc_dnn))
+      assign(paste0("eggc_dnn_", egg_var), as.data.frame(eggc_dnn))
+      # Might want to add only a comparison with the control (for better statistical power, equivalent to Dunnett's)
+      # This is done by taking the p values of eggc_dnn (eggc_dnn$p), and the comparisons (eggc_dnn$comparisons)
+      # And correcting only the p values (with p.adjust) where the comparison has the control.
+    } else {
+      cat("\nNo significant results from Kruskal-Wallis. No post-hoc test performed.\n")
+    }
+  } else {cat("Residuals distribution is normal.")}
+
+  # One-way ANOVA
+  # Do ANOVA test anyway, in case shapiro is significant, but plots look good.
+  # As well as for non significant shapiro test
+  cat("\nOne-way ANOVA summary:\n\n")
+  eggc_anova <- aov(reformulate("condition", response = egg_var), data = data_max)
+  print(summary(eggc_anova))
+  
+  # If ANOVA is significant, do post-hoc Dunnett's and Tukey's
+  if (summary(eggc_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
+    cat("\nResults from Dunnett's test:\n")
+    eggc_dnt <- DunnettTest(reformulate("condition", response = egg_var), data = data_max, control = control)
+    assign(paste0("eggc_dnt_", egg_var), as.data.frame(eggc_dnt[[1]]))
+    print(eggc_dnt)
+    cat("\nResults from Tukey's test:\n")
+    eggc_thsd <- TukeyHSD(eggc_anova)
+    eggc_thsd <- as.data.frame(eggc_thsd$condition) |>
+      mutate(p.adj.signif = case_when(`p adj` < 0.001 ~ "***",
+                                      `p adj` < 0.01 ~ "**",
+                                      `p adj` < 0.05 ~ "*",
+                                      `p adj` < 0.1 ~ ".",
+                                      `p adj` >= 0.1 ~ "ns"))
+    assign(paste0("eggc_thsd_", egg_var), eggc_thsd)
+    print(eggc_thsd)
+  } else {
+    cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
+  }
+
+  # Finish saving results
+  sink()
+}
