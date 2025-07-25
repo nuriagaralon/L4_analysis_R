@@ -59,7 +59,7 @@ data_all_fluo <- data_all_fluo |>
     day = ceiling(time / (60 * 60 * 24)),
     hour = ceiling(time / (60 * 60)),
     minute = ceiling(time / 60),
-    fluo_intensity = `tot_Intensity_minus_background"`
+    fluo_intensity = `tot_Intensity_minus_background"` # I don't know if it's normal that the variable name has a "
   ) |>
   select(condition, step, time, day, hour, minute,
       exp_id, chamber_id, fluo_intensity

@@ -174,7 +174,7 @@ if (summary(egge_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
 sink()
 
 # Plot egg emergence hour
-# Mean, std, n of replicates
+# Summarize data
 egg_eh <- egg_table |>
   group_by(condition) |>
   summarise(
