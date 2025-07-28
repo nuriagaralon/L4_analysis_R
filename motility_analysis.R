@@ -37,23 +37,32 @@ table_mot <- bind_rows(table_mot)
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
 table_mot <- table_mot |> filter(!str_detect(condition, "FUdR"))
 
-## [CUSTOM] Filter worms with less than 10 measurements
-#filter_number <- 10
-#
-#valid_worms <- table_mot |>
-#    group_by(exp_id, chip, channel, chamber, worm_id) |>
-#    summarise(worm_id_count = n(), .groups = "drop") |>
-#    filter(worm_id_count >= filter_number)
-#
-#data_mot <- table_mot |> inner_join(valid_worms, by = c("exp_id", "chip", "channel", "chamber", "worm_id"))
-#data_mot <- data_mot |> select(-worm_id_count)
-
-data_mot <- table_mot
-
-# Do we want to use worms as replicates? What about channels?
+# [CUSTOM] Do we want to use worms as replicates? What about channels?
 worm_rep <- FALSE
 channels <- TRUE
 
+# [CUSTOM] Filter worms with less than 10 measurements (useful when using worm as replicate)
+# Can change filter_number
+
+# The problem with using worms as replicates is that, if they do not have all the values,
+# there are problems afterwards with the ANOVA: it will remove the replicates that 
+# don't have data for all timepoints.
+
+if(worm_rep){
+  filter_number <- 10
+
+  valid_worms <- table_mot |>
+      group_by(exp_id, chip, channel, chamber, worm_id) |>
+      summarise(worm_id_count = n(), .groups = "drop") |>
+      filter(worm_id_count >= filter_number)
+
+  data_mot <- table_mot |> inner_join(valid_worms, by = c("exp_id", "chip", "channel", "chamber", "worm_id"))
+  data_mot <- data_mot |> select(-worm_id_count)
+} else {
+  data_mot <- table_mot
+}
+
+# Set what is the replicate
 if(length(path_mot) > 1){
   if(worm_rep){
     rep_cols <- c("exp_id", "chip", "channel", "chamber", "worm_id")
@@ -65,7 +74,7 @@ if(length(path_mot) > 1){
     rep_cols <- c("exp_id", "condition")
     replicate <- "Modelled using experiment as replicate."
   }
-# If only one file, replicate ID is the chip_channel combination
+# If only one file, replicate ID is the chip_channel combination, or the worm
 } else if (length(path_mot) == 1) {
   if(worm_rep){
     rep_cols <- c("chip", "channel", "chamber", "worm_id")
@@ -88,7 +97,10 @@ data_mot <- data_mot |>
     head_amplitude, tail_amplitude, displacement_speed, bodybends_frequency
   )
 
-#
+# Plot each variable head_amplitude, tail_amplitude, displacement_speed, bodybends_frequency
+# Aggregated per day
+
+# Function to summarise data per each variable
 plot_motility <- function(data, variable){
   plotdata <- data |>
     group_by(day, condition) |>
@@ -109,7 +121,7 @@ plot_motility <- function(data, variable){
     labs(color = "Condition")
 }
 
-
+# Plot and save plotly
 ha_plot <- plot_motility(data_mot, head_amplitude) + ylab("Head amplitude (mm)")
 ha_plotly <- ggplotly(ha_plot)
 
@@ -131,7 +143,7 @@ bf_plotly <- ggplotly(bf_plot)
 htmlwidgets::saveWidget(as_widget(bf_plotly), "results/motility/motility_bodybends_frequency.html")
 
 # Get data for statistical analysis
-# This is to analyze the full dataset
+# Summarize each replicate (for the four variables) grouped by condition and day
 data_testmot <- data_mot |>
   group_by(condition, rep_id, day) |>
   summarise(
@@ -141,7 +153,7 @@ data_testmot <- data_mot |>
     bf = mean(bodybends_frequency)
   )
 
-# This function fills empty values with 0, and can also filter for experiment
+# This function fills empty values with 0, and can also filter for experiment if needed
 from_data_testmot_fill <- function(data_testmot, id_pattern = NULL){
   if(!is.null(id_pattern)){
     smalldata <- data_testmot |> filter(str_detect(rep_id, id_pattern))
@@ -149,14 +161,23 @@ from_data_testmot_fill <- function(data_testmot, id_pattern = NULL){
     smalldata <- data_testmot
   }
   condition_map <- smalldata |> distinct(rep_id, condition)
-  smalldata <- smalldata |> ungroup() |> select(-condition) |>
-    tidyr::complete(rep_id, day, fill = list(ha = 0, ta = 0, ds = 0, bf = 0))
 
+  # Store original rows
+  original_rows <- smalldata |> ungroup() |> select(rep_id, day)
+
+  # Fill missing rows with 0
+  smalldata <- smalldata |> ungroup() |> select(-condition) |>
+    tidyr::complete(rep_id, day, fill = list(ha = 0, ta = 0, ds = 0, bf = 0)) |>
+    mutate(was_missing = !paste(rep_id, day) %in% paste(original_rows$rep_id, original_rows$day))
+
+  # Add condition to filled rows
   smalldata <- smalldata |>
     left_join(condition_map, by = "rep_id")
+  
+  return(smalldata)
 }
 
-# So if we want to use all data as is, use data_testmot
+# So 
 # If we want to use data with missing values set to 0, separated by experiment
 data_wiz <- from_data_testmot_fill(data_testmot, "wiz")
 data_CGa <- from_data_testmot_fill(data_testmot, "CGa")
@@ -170,20 +191,63 @@ data_all <- from_data_testmot_fill(data_testmot)
 # Or fill the shorter one, or analyse them separately and then see if the conclusions are
 # the same.
 
+# So these are the options:
+# 1. Use all data, filled with 0 when missing
+data_all <- from_data_testmot_fill(data_testmot)
+
+# 2. Use all data as is (it will remove incomplete replicates)
+data_all_nofill <- data_testmot
+
+# 3. Use data separated per experiment, with filled missing values
+exp_ids <- unique(table_mot$exp_id)
+
+data_by_exp <- lapply(exp_ids, function(id) {
+  from_data_testmot_fill(data_testmot, id)
+})
+names(data_by_exp) <- exp_ids
+
+# 4. Use data separated per experiment as is (it will remove incomplete replicates)
+# This option is not recommended, as if we end up with only one replicate
+# the ANOVA will not work.
+
+data_by_exp_nofill <- lapply(exp_ids, function(id) {
+    data_testmot |> filter(str_detect(rep_id, id))
+})
+names(data_by_exp_nofill) <- paste0(exp_ids, "_nofill")
+
+
 # Save statistical tests to file
-dataset_list <- list(
-  wiz = data_wiz,
-  CGa = data_CGa,
-  fgo = data_fgo,
-  all = data_all
-)
+variables <- c("ha", "ta", "ds", "bf")
 
-for(replicate in names(dataset_list)){
-  df <- dataset_list[[replicate]]
+# Choose which option to use
+# 1 = all data with fill, 2 = all data no fill,
+# 3 = per-experiment with fill, 4 = per-experiment no fill
+option <- 2
 
-  for(variable in c("ha", "ta", "ds", "bf"){
+if (option == 1) {
+  dataset_names <- "all"
+  dataset_list <- list(all = data_all)
+
+} else if (option == 2) {
+  dataset_names <- "all_no_fill"
+  dataset_list <- list(all_no_fill = data_all_nofill)
+
+} else if (option == 3) {
+  dataset_names <- names(data_by_exp)
+  dataset_list <- data_by_exp
+
+} else if (option == 4) {
+  dataset_names <- names(data_by_exp_nofill)
+  dataset_list <- data_by_exp_nofill
+
+}
+
+for(name in dataset_names){
+  df <- dataset_list[[name]]
+
+  for(variable in variables){
   # Sink (save) results, say which 
-  sink(paste0("results/motility/motility_", replicate, "_", variable, ".txt"))
+  sink(paste0("results/motility/motility_", name, "_", variable, ".txt"))
   
 
 
@@ -197,22 +261,22 @@ for(replicate in names(dataset_list)){
 
 aov_result <- aov_ez(id = "rep_id",
                       dv = "ha",
-                      data = placeh,
+                      data = df,
                       within = "day",
                       between = "condition")
 
-placeh_young <- placeh |> filter(day <=10)
-placeh_old <- placeh |> filter(day >10)
+data_wiz_young <- data_wiz |> filter(day <=10)
+data_wiz_old <- data_wiz |> filter(day >10)
 
 aov_young <- aov_ez(id = "rep_id",
                      dv = "ha",
-                     data = placeh_young,
+                     data = data_wiz_young,
                      within = "day",
                      between = "condition")
 
 aov_old <- aov_ez(id = "rep_id",
                      dv = "ha",
-                     data = placeh_old,
+                     data = data_wiz_old,
                      within = "day",
                      between = "condition")
 
