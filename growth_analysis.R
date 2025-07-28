@@ -15,6 +15,9 @@ library(ggpubr)
 library(ggsci)
 #library(nlme) #[O], explained later
 
+# Create results directory
+dir.create("results/growth", showWarnings = FALSE, recursive = TRUE)
+
 # Get growth data file
 # Takes all files in the folder data/ which contain "growth_filtered_raw" in the name
 path_gro <- list.files("data", pattern = "growth_filtered_raw", full.names = TRUE)

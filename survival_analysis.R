@@ -10,6 +10,9 @@ library(plotly)
 library(survival)
 library(survminer)
 
+# Create results directory
+dir.create("results/survival", showWarnings = FALSE, recursive = TRUE)
+
 # Get surv data file
 # Takes all files in the folder data/ which contain "survival" in the name
 path_surv <- list.files("data", pattern = "survival", full.names = TRUE)

@@ -11,6 +11,9 @@ library(plotly)
 library(ggpubr)
 library(ggsci)
 
+# Create results directory
+dir.create("results/fluo", showWarnings = FALSE, recursive = TRUE)
+
 # Get fluorescence data file
 # Takes all files in the folder data/ which contain "fluo_raw" in the name
 path_fluo <- list.files("data", pattern = "fluo_raw", full.names = TRUE)
