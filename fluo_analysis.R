@@ -32,19 +32,19 @@ table_fluo <- bind_rows(table_fluo)
 
 # Prepare data to analyze and plot
 # [CUSTOM] Write which chambers to use for analysis
-# Remember to choose chambers with only one worm, at least 3 per condition,
-# if possible the same amount per condition
+# Remember to choose chambers with only one worm, at least 3 (better 5 or more)
+# per condition, if possible the same amount per condition
 
-#cham_to_use <- list(
-#  wiz6YHzJUXFL = c("C-9-1", "B-10-7", "A-13-3", "B-3-1"),
-#  CGa = c("A-4-8", "C-3-3", "C-3-8"),
-#  fgo = c("C-2-5", "A-5-2", "A-4-7")
-#)
-#
-#data_all_fluo <- imap_dfr(cham_to_use, function(chambers, experiment) {
-#  table_fluo |> filter(exp_id == experiment, chamber_id %in% chambers)
-#})
-data_all_fluo <- table_fluo
+cham_to_use <- list(
+  wiz6YHzJUXFL = c("C-9-1", "B-10-7", "A-13-3", "B-3-1"),
+  CGa = c("A-4-8", "C-3-3", "C-3-8"),
+  fgo = c("C-2-5", "A-5-2", "A-4-7")
+)
+
+data_all_fluo <- imap_dfr(cham_to_use, function(chambers, experiment) {
+  table_fluo |> filter(exp_id == experiment, chamber_id %in% chambers)
+})
+#data_all_fluo <- table_fluo
 
 # Set condition as factor
 data_all_fluo$condition <- as.factor(data_all_fluo$condition)
@@ -53,63 +53,101 @@ data_all_fluo$condition <- as.factor(data_all_fluo$condition)
 condition_levels <- levels(data_all_fluo$condition)
 control <- condition_levels[str_detect(condition_levels, fixed("Water"))]
 
-#
+# Add day, hour, change intensity minus background to "fluo_intensity"
+# In the current data, the variable name has a " at the end, I don't know if it
+# is like this from the beginning (check)
 data_all_fluo <- data_all_fluo |>
   mutate(
     day = ceiling(time / (60 * 60 * 24)),
     hour = ceiling(time / (60 * 60)),
-    minute = ceiling(time / 60),
-    fluo_intensity = `tot_Intensity_minus_background"` # I don't know if it's normal that the variable name has a "
+    fluo_intensity = `tot_Intensity_minus_background"` 
   ) |>
-  select(condition, step, time, day, hour, minute,
+  select(condition, step, time, day, hour,
       exp_id, chamber_id, fluo_intensity
   )
 
-#
+# Make a plot to check at which timepoint (which hour) the initial fluo intensity
+# levels to real measurements
 check_plot <- ggplot(data_all_fluo, aes(x = hour, y = fluo_intensity, color = condition)) +
-  geom_point() + geom_line()
+  geom_point() + geom_line() + 
+  labs(x = "Hour (h)", y = "Fluorescence intensity", color = "Condition")
 
-ggplotly(check_plot)
+check_plotly <- ggplotly(check_plot)
+check_plotly
 
-data_fluo <- data_all_fluo |> filter(hour >= 482)
+htmlwidgets::saveWidget(as_widget(check_plotly), "results/fluo/fluo_initial_check.html")
 
-# Get fold change values
-data_control <- data_fluo |>
-    filter(condition == control) |>
-    group_by(time) |>
-    summarise(
-#        time_m = mean(time),
-#        time_sd = sd(time),
-        fluo_intensity_m = mean(fluo_intensity),
-        fluo_intensity_sd = sd(fluo_intensity)
-    )
+# [CUSTOM] Set start_hour to the hour we want to begin using the data
+# Check fluo_initial_check.html or check_plotly to decide 
+start_hour <- 482
 
+data_fluo <- data_all_fluo |> filter(hour >= start_hour)
+
+# Calculate fold change values
+# Each experiment should use its own control (but the control condition
+# should be the same, and it was set above at the variable control)
 data_fluo <- data_fluo |>
-#    filter(condition != control) |>
-    rowwise() |>
-    mutate(
-        closest_control_idx = which.min(abs(data_control$time - time)),
-        closest_control_value = data_control$fluo_intensity_m[closest_control_idx],
-        fold_change = fluo_intensity / closest_control_value
-    ) |>
-    ungroup()
+  group_by(exp_id) |>
+  group_modify(~ {
+    # First we get a data frame with the data with only one experiment
+    exp_data <- .
 
+    # Then, we filter the control values
+    # And average in the case two measurements are from the exact same timepoint
+    # Which shouldn't happen, as we're dealing with timepoints in seconds
+    data_control <- exp_data |>
+      filter(condition == control) |>
+      group_by(time) |>
+      summarise(
+        fluo_intensity_m = mean(fluo_intensity),
+        .groups = "drop"
+      )
+
+    # Then we calculate the fold change, separate by each experiment_id
+    exp_data <- exp_data |>
+      rowwise() |>
+      mutate(
+        closest_control_index = which.min(abs(data_control$time - time)),
+        closest_control_value = data_control$fluo_intensity_m[closest_control_index],
+        fold_change = fluo_intensity / closest_control_value
+      ) |>
+      ungroup()
+
+      #Then we pass the resulting dataframe out of the function
+      return(exp_data)
+  }) |>
+  # And remove the exp_id groups
+  ungroup()
+
+# [CUSTOM] Change keep_control to FALSE to filter out
+# the control values (which will all be FC = 1)
+keep_control <- TRUE
+
+if(!keep_control){
+data_fluo <- data_fluo |> filter(condition != control)
+}
+
+# Summarise data by hour to plot (all chambers of the same
+# condition are aggregated)
 summ_fluo <- data_fluo |>
     group_by(condition, hour) |>
     summarise(
         fold_change_m = mean(fold_change),
         fold_change_sd = sd(fold_change),
-        n_chambers = distinct(chamber_id)
+        n_chambers = n_distinct(chamber_id)
     )
 
-# Plot per hour
-ppp <- ggplot(summ_fluo, aes(x = hour, y = fold_change_m, color = condition)) +
+# Plot Fold Change values per hour
+fluo_hour_plot <- ggplot(summ_fluo, aes(x = hour, y = fold_change_m, color = condition)) +
     geom_point() + geom_line() +
-    geom_errorbar(aes(ymin = fold_change_m-fold_change_sd, ymax = fold_change_m+fold_change_sd))
+    geom_errorbar(aes(ymin = fold_change_m-fold_change_sd, ymax = fold_change_m+fold_change_sd)) + 
+    labs(x = "Hour (h)", y = "Fluorescence Fold Change", color = "Condition")
 
-ggplotly(ppp)
+fluo_hour_plotly <- ggplotly(fluo_hour_plot)
 
-# ANOVA at certain timepoints
+htmlwidgets::saveWidget(as_widget(fluo_hour_plotly), "results/fluo/fluo_FC_hour.html")
+
+# Difference between conditions at a specific timepoint
 timepoint <- 486 #Hour
 sig_pval <- 0.05
 
@@ -118,6 +156,8 @@ options(width = 1000)
 options(max.print = 2000)
 
 # Summarise at timepoint (keep replicates separate)
+# There should only be one point per hour, condition, exp_id, chamber_id
+# but we will summarise just in case
 data_fluotp <- data_fluo |>
   filter(hour == timepoint) |>
   group_by(condition, exp_id, chamber_id) |>
@@ -200,7 +240,8 @@ if (summary(ftp_anova)[[1]]$`Pr(>F)`[1] < sig_pval){
 # Finish saving results
 sink()
 
-# Plot timepoint
+# Plot at timepoint
+# Organise data
 data_fluotp_plot <- data_fluotp |>
     ungroup() |>
     group_by(condition) |>
@@ -279,9 +320,10 @@ plot_signif <- function(posthoc_res, plot_var, error_var, point_var){
 }
 
 # Plot values and significance
+# General plot
 plot_fluotp <- ggplot(data_fluotp_plot, aes(x = condition, y = fc_mean, color = condition)) +
     geom_boxplot(show.legend = FALSE) +
-    geom_jitter(aes(x = condition, y = fold_change_m), data = data_timepoint, show.legend = FALSE) +
+    geom_jitter(aes(x = condition, y = fold_change_m), data = data_fluotp, show.legend = FALSE) +
     geom_errorbar(aes(ymin = fc_mean-fc_sem, ymax = fc_mean+fc_sem),  show.legend = FALSE) +
     #scale_color_igv() + #[CUSTOM] Color scale can be changed.
     scale_x_discrete(guide = guide_axis(angle = 90)) + # [CUSTOM] Change to change angle of labels of x axis
@@ -294,4 +336,3 @@ if (exists("ftp_dnn")){
 
 ggsave(filename = paste0("results/fluo/fluo_", timepoint, ".png"), plot = plot_fluotp,
        width = 17, height = 15, dpi = 1000, units = "cm")
-
