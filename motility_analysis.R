@@ -9,14 +9,17 @@ library(tidyverse)
 library(readxl)
 library(plotly)
 library(afex)
-
+library(DescTools)
+library(emmeans)
 
 library(pracma)
-library(DescTools)
 library(rstatix)
 library(ggpubr)
 library(ggsci)
 #library(nlme) #[O], explained later
+
+# Create results directory
+dir.create("results/motility", showWarnings = FALSE, recursive = TRUE)
 
 # Get motility data file
 # Takes all files in the folder data/ which contain "motility_filtered_raw" in the name
@@ -143,6 +146,14 @@ bf_plotly <- ggplotly(bf_plot)
 htmlwidgets::saveWidget(as_widget(bf_plotly), "results/motility/motility_bodybends_frequency.html")
 
 # Get data for statistical analysis
+
+# Allows wider lines and enough rows when saving statistics results to text file
+options(width = 1000)
+options(max.print = 2000)
+
+# [CUSTOM] Set significant p-value
+sig_pval <- 0.05
+
 # Summarize each replicate (for the four variables) grouped by condition and day
 data_testmot <- data_mot |>
   group_by(condition, rep_id, day) |>
@@ -177,15 +188,7 @@ from_data_testmot_fill <- function(data_testmot, id_pattern = NULL){
   return(smalldata)
 }
 
-# So 
-# If we want to use data with missing values set to 0, separated by experiment
-data_wiz <- from_data_testmot_fill(data_testmot, "wiz")
-data_CGa <- from_data_testmot_fill(data_testmot, "CGa")
-data_fgo <- from_data_testmot_fill(data_testmot, "fgo")
-# If we want to use all data with missing values set to 0
-data_all <- from_data_testmot_fill(data_testmot)
-
-# the mixed-measures two way anova deals with unbalanced data by erasing
+# The mixed-measures two way anova deals with unbalanced data by erasing
 # the row of data. So filling it avoids the data being deleted. So then, for example
 # if one data is longer in time than the others, maybe we should either let it get cut
 # Or fill the shorter one, or analyse them separately and then see if the conclusions are
@@ -217,12 +220,134 @@ names(data_by_exp_nofill) <- paste0(exp_ids, "_nofill")
 
 
 # Save statistical tests to file
+
+# Function to check normality
+save_normality <- function(aov_ez_result, age, variable){
+  # Save to PNG file
+  png(paste0("results/motility/", age, "_", variable, "_normality.png"), width = 1200, height = 600)
+
+  # Set up 1 row, 2 columns layout
+  par(mfrow = c(1, 2))
+
+  # Residuals vs Fitted
+  fitted_vals <- fitted(aov_ez_result$lm)
+  residuals_vals <- resid(aov_ez_result$lm)
+  plot(fitted_vals, residuals_vals,
+       xlab = "Fitted Values",
+       ylab = "Residuals",
+       main = "Residuals vs Fitted Values")
+  abline(h = 0, col = "red", lty = 2)
+
+  # Q-Q plot
+  res <- residuals(aov_ez_result$lm)
+  qqnorm(res, main = "Q-Q Plot of Residuals")
+  qqline(res, col = "red", lty = 2)
+
+  # Turn off plotting device
+  dev.off()
+}
+
+# Function to run all normality tests, normality plots, anova, and posthoc tests.
+run_anova_and_posthoc <- function(df_age, name, variable, worm_age, sig_pval){
+  # Sink (save) results, say which
+  sink(paste0("results/motility/motility_", name, "_", variable, "_", worm_age, ".txt"))
+
+  cat(replicate)
+  # First let's do young worms
+  cat("\n\nTest ")
+  cat(worm_age)
+  cat("worms:\n")
+  # Mixed two-way ANOVA with DAY as within factor, CONDITION as between factor
+  # Within means subjects are repeated (measuring same worms on day 1 and day 10)
+  # Between means subjects are different (measuring different worms on treatment and control)
+  aov_age <- aov_ez(id = "rep_id",
+                     dv = variable,
+                     data = df_age,
+                     within = "day",
+                     between = "condition")
+
+  # Save normality plot
+  save_normality(aov_age, worm_age, variable)
+
+  # Check normality of residuals with shapiro test. If not normal,
+  # can check QQ plot. If it looks okay, ANOVA is quite robust.
+  # Also check equality of variances with Levene test. Can check
+  # residuals vs fitted plot.
+  cat("Check normality and equality of variances:\n")
+
+  shap <- shapiro.test(residuals(aov_age$lm))
+  lev <- LeveneTest(reformulate("condition", response = variable), data = df_age)
+
+  if(shap$p.value < sig_pval || is.na(lev$`Pr(>F)`[1]) || lev$`Pr(>F)`[1] < sig_pval){
+    cat("Residuals distribution not normal or unequal variances. Please check assumptions at")
+    cat(worm_age)
+    cat("_")
+    cat(variable)
+    cat("_normality.png to use ANOVA results.\n\n")
+    # Work in progress
+    #cat("Otherwise, here is an ART ANOVA test:\n")
+    # Use library(ARTool)
+  } else {cat("Residuals distribution is normal, variances are equal.")}
+
+  # Print Two-way ANOVA summary
+  # Sphericity correction information:
+  # Generally, you should use the Greenhouse-Geisser correction (more strict),
+  # specially when epsilon < 0.75 (GG eps). If epsilon > 0.75,
+  # some statisticians recommend the Huynh-Feldt correction (Girden 1992).
+  # Here we will use GG correction.
+  cat("\nMixed measures Two-way ANOVA summary:\n\n")
+  print(summary(aov_age))
+
+  # Post-hoc with emmeans
+  if(any(aov_age$anova_table$`Pr(>F)` < sig_pval, na.rm = TRUE)){
+
+    if(aov_age$anova_table["condition", "Pr(>F)"] < sig_pval){
+      cat("\nPost hoc: condition main effect\n")
+      print(emmeans(aov_age, pairwise ~ condition))
+    }
+
+    if (aov_age$anova_table["day", "Pr(>F)"] < sig_pval) {
+      cat("\nPost hoc: day main effect\n")
+      print(emmeans(aov_age, pairwise ~ day))
+    }
+
+    if (aov_age$anova_table["condition:day", "Pr(>F)"] < sig_pval) {
+      # Compare conditions at each day
+      # At each day, how do the conditions differ?
+      cat("\nPost hoc: condition differences at each day\n")
+      emm <- emmeans(aov_age, ~ condition | day)
+      pwres <- pairs(emm, adjust = "holm")
+      sig_pwres <- summary(pwres) |>
+        as.data.frame() |>
+        filter(p.value < sig_pval)
+      print(sig_pwres)
+
+      # Compare days within each condition
+      # Does this condition improve or decline over time?
+      cat("\nPost hoc: day differences at each condition\n")
+      emm2 <- emmeans(aov_age, ~ day | condition)
+      pwres2 <- pairs(emm2, adjust = "holm")
+      sig_pwres2 <- summary(pwres2) |>
+        as.data.frame() |>
+        filter(p.value < sig_pval)
+      print(sig_pwres2)
+    }
+  } else {
+    cat("\nNo significant results from ANOVA. No post-hoc test performed.\n")
+  }
+
+  # Finish saving results
+  sink()
+}
+
+# Significant results, first set variables to test
+# (head amplitude, tail amplitude, displacement speed, bodybends frequency)
 variables <- c("ha", "ta", "ds", "bf")
 
 # Choose which option to use
 # 1 = all data with fill, 2 = all data no fill,
 # 3 = per-experiment with fill, 4 = per-experiment no fill
-option <- 2
+option <- 1
 
 if (option == 1) {
   dataset_names <- "all"
@@ -242,50 +367,17 @@ if (option == 1) {
 
 }
 
+# Loop through datasets, variables, and do young and old results
 for(name in dataset_names){
   df <- dataset_list[[name]]
 
+  # Separate the data in young and old
+  df_young <- df |> filter(day <= 10)
+  df_old <- df |> filter(day > 10)
+
   for(variable in variables){
-  # Sink (save) results, say which 
-  sink(paste0("results/motility/motility_", name, "_", variable, ".txt"))
-  
-
-
-
-
+    run_anova_and_posthoc(df_young, name, variable, worm_age = "young", sig_pval)
+    run_anova_and_posthoc(df_old, name, variable, worm_age = "old", sig_pval)
+    
   }
 }
-
-
-
-
-aov_result <- aov_ez(id = "rep_id",
-                      dv = "ha",
-                      data = df,
-                      within = "day",
-                      between = "condition")
-
-data_wiz_young <- data_wiz |> filter(day <=10)
-data_wiz_old <- data_wiz |> filter(day >10)
-
-aov_young <- aov_ez(id = "rep_id",
-                     dv = "ha",
-                     data = data_wiz_young,
-                     within = "day",
-                     between = "condition")
-
-aov_old <- aov_ez(id = "rep_id",
-                     dv = "ha",
-                     data = data_wiz_old,
-                     within = "day",
-                     between = "condition")
-
-> emm <- emmeans(aov_young, ~ condition | day)
-> emm2 <- pairs(emm, adjust = "holm") 
-> str(emm2)
-'emmGrid' object with variables:
-    contrast = 1, 2, 3, 4, 5, 6, 7, 8, 9, ..., 120
-    day = multivariate response levels: 1, 2, 3, 4, 5, 6, 7, 8, 9, ..., 10
-> emm2 <- as.data.frame(emm2)
-> View(emm2)
-> emm2 <- emm2 |> filter(p.value < 0.01)
