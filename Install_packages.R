@@ -1,15 +1,31 @@
-# Installs all packages needed for the project
-# For now, only survival
+# List of required packages for all scripts
+packages <- c(
+  "tidyverse",
+  "readxl",
+  "survival",
+  "survminer",
+  "plotly",
+  "ggfortify",
+  "pracma",
+  "DescTools",
+  "rstatix",
+  "ggpubr",
+  "ggsci",
+  "htmlwidgets",
+  "zoo",
+  "afex",
+  "emmeans"
+)
 
-install.packages("tidyverse")
-install.packages("readxl")
-install.packages("survival")
-install.packages("survminer")
-install.packages("plotly")
-install.packages("ggfortify")
-install.packages("pracma")
-install.packages("DescTools")
-install.packages("rstatix")
-install.packages("ggpubr")
-install.packages("ggsci")
-install.packages("htmlwidgets")
+# Function: install only the ones that are not already installed
+install_if_missing <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+}
+
+# Apply the function to each package
+invisible(lapply(packages, install_if_missing))
+
+# Remove variable
+rm(packages)
