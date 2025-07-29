@@ -11,12 +11,7 @@ library(plotly)
 library(afex)
 library(DescTools)
 library(emmeans)
-
-library(pracma)
-library(rstatix)
-library(ggpubr)
 library(ggsci)
-#library(nlme) #[O], explained later
 
 # Create results directory
 dir.create("results/motility", showWarnings = FALSE, recursive = TRUE)
@@ -256,7 +251,7 @@ run_anova_and_posthoc <- function(df_age, name, variable, worm_age, sig_pval){
   # First let's do young worms
   cat("\n\nTest ")
   cat(worm_age)
-  cat("worms:\n")
+  cat(" worms:\n")
   # Mixed two-way ANOVA with DAY as within factor, CONDITION as between factor
   # Within means subjects are repeated (measuring same worms on day 1 and day 10)
   # Between means subjects are different (measuring different worms on treatment and control)
@@ -279,7 +274,7 @@ run_anova_and_posthoc <- function(df_age, name, variable, worm_age, sig_pval){
   lev <- LeveneTest(reformulate("condition", response = variable), data = df_age)
 
   if(shap$p.value < sig_pval || is.na(lev$`Pr(>F)`[1]) || lev$`Pr(>F)`[1] < sig_pval){
-    cat("Residuals distribution not normal or unequal variances. Please check assumptions at")
+    cat("Residuals distribution not normal or unequal variances. Please check assumptions at ")
     cat(worm_age)
     cat("_")
     cat(variable)

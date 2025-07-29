@@ -362,6 +362,8 @@ egg_counts_day <- egg_count_table |>
   )
 
 # Plot and save plotly
+# [CUSTOM] If we want to plot raw (and not normalized) data, change all mean_norm
+# in egg_count_plot for mean, and all sem_norm for sem
 egg_count_plot <- ggplot(egg_counts_day, aes(x = day, y = mean_norm, color = condition)) +
   geom_line() +
   geom_point() +

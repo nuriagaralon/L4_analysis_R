@@ -38,15 +38,26 @@ table_fluo <- bind_rows(table_fluo)
 # Remember to choose chambers with only one worm, at least 3 (better 5 or more)
 # per condition, if possible the same amount per condition
 
-cham_to_use <- list(
-  wiz6YHzJUXFL = c("C-9-1", "B-10-7", "A-13-3", "B-3-1"),
-  CGa = c("A-4-8", "C-3-3", "C-3-8"),
-  fgo = c("C-2-5", "A-5-2", "A-4-7")
-)
+if(file.exists("data/fluo_chambers_use.xlsx")){
+  cham_to_use <- read_excel("data/fluo_chambers_use.xlsx")
+  cham_to_use <- cham_to_use |>
+    map(~ na.omit(.x)) |> # Removes NA (empty values)
+    map(as.character)
+} else {
+  stop("There is no file that describes the chambers to use.")
+}
+
+#cham_to_use <- list(
+#  wiz6YHzJUXFL = c("C-9-1", "B-10-7", "A-13-3", "B-3-1"),
+#  CGa = c("A-4-8", "C-3-3", "C-3-8"),
+#  fgo = c("C-2-5", "A-5-2", "A-4-7")
+#)
 
 data_all_fluo <- imap_dfr(cham_to_use, function(chambers, experiment) {
   table_fluo |> filter(exp_id == experiment, chamber_id %in% chambers)
 })
+
+# Used if we want to use all data (just when testing, we don't have all options)
 #data_all_fluo <- table_fluo
 
 # Set condition as factor
