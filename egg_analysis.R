@@ -1,4 +1,11 @@
 # Egg analysis for L4 Nagi data
+
+#--------------------------
+# Author: Núria Garriga Alonso
+# GitHub: @nuriagaralon
+# Repository: https://github.com/nuriagaralon/L4_analysis_R
+#--------------------------
+
 # Run everything IN ORDER except what is marked as [O], which means optional
 # [CUSTOM] means that the line can be changed to suit conditions or controls
 # in the experiment

@@ -1,3 +1,11 @@
+# Install required packages
+
+#--------------------------
+# Author: Núria Garriga Alonso
+# GitHub: @nuriagaralon
+# Repository: https://github.com/nuriagaralon/L4_analysis_R
+#--------------------------
+
 # List of required packages for all scripts
 packages <- c(
   "tidyverse",
