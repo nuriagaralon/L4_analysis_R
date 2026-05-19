@@ -168,8 +168,8 @@ fluo_hour_plotly <- ggplotly(fluo_hour_plot)
 
 htmlwidgets::saveWidget(as_widget(fluo_hour_plotly), "results/fluo/fluo_FC_hour.html")
 
-# Difference between conditions at a specific timepoint
-timepoint <- 486 #Hour
+# [CUSTOM] Difference between conditions at a specific timepoint
+timepoint <- 485 #Hour
 sig_pval <- 0.05
 
 # Allows wider lines and enough rows when saving statistics results to text file

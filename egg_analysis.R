@@ -87,10 +87,9 @@ start_tables <- map(path_egg, function(path){
 
 # Gets data from all files in one table
 egg_table <- bind_rows(start_tables) |>
-  separate(
-    col = "condition",
-    into = c("condition", "rep_id"),
-    sep = "_"
+  separate_wider_regex(
+    cols = "condition",
+    patterns = c(condition = ".*", "_", rep_id = ".*"),
   )
 
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
@@ -322,10 +321,9 @@ count_tables <- map(path_egg, function(path){
 
 # Gets data from all files in one table
 egg_count_data <- bind_rows(count_tables) |>
-  separate(
-    col = "condition",
-    into = c("condition", "rep_id"),
-    sep = "_"
+  separate_wider_regex(
+    cols = "condition",
+    patterns = c(condition = ".*", "_", rep_id = ".*"),
   ) |>
   rename_with(~ "mean_eggs_per_worm", .cols = matches("mean")) |>
   rename_with(~ "std_eggs_per_worm", .cols = matches("std")) |>
