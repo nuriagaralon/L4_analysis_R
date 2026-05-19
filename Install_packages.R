@@ -1,4 +1,4 @@
-# Install required packages
+# Reproducible package environment managed by renv
 
 #--------------------------
 # Author: Núria Garriga Alonso
@@ -6,34 +6,9 @@
 # Repository: https://github.com/nuriagaralon/L4_analysis_R
 #--------------------------
 
-# List of required packages for all scripts
-packages <- c(
-  "tidyverse",
-  "readxl",
-  "survival",
-  "survminer",
-  "plotly",
-  "ggfortify",
-  "pracma",
-  "DescTools",
-  "rstatix",
-  "ggpubr",
-  "ggsci",
-  "htmlwidgets",
-  "zoo",
-  "afex",
-  "emmeans"
-)
-
-# Function: install only the ones that are not already installed
-install_if_missing <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    install.packages(pkg)
-  }
+# If the project does not automatically prompt for restore:
+if (!requireNamespace("renv", quietly = TRUE)) {
+  install.packages("renv")
 }
 
-# Apply the function to each package
-invisible(lapply(packages, install_if_missing))
-
-# Remove variable
-rm(packages)
+renv::restore()
