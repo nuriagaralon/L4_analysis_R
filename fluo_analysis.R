@@ -54,18 +54,9 @@ if(file.exists("data/fluo_chambers_use.xlsx")){
   stop("There is no file that describes the chambers to use.")
 }
 
-#cham_to_use <- list(
-#  wiz6YHzJUXFL = c("C-9-1", "B-10-7", "A-13-3", "B-3-1"),
-#  CGa = c("A-4-8", "C-3-3", "C-3-8"),
-#  fgo = c("C-2-5", "A-5-2", "A-4-7")
-#)
-
 data_all_fluo <- imap_dfr(cham_to_use, function(chambers, experiment) {
   table_fluo |> filter(exp_id == experiment, chamber_id %in% chambers)
 })
-
-# Used if we want to use all data (just when testing, we don't have all options)
-#data_all_fluo <- table_fluo
 
 # Set condition as factor
 data_all_fluo$condition <- as.factor(data_all_fluo$condition)
@@ -100,7 +91,7 @@ htmlwidgets::saveWidget(as_widget(check_plotly), "results/fluo/fluo_initial_chec
 
 # [CUSTOM] Set start_hour to the hour we want to begin using the data
 # Check fluo_initial_check.html or check_plotly to decide 
-start_hour <- 482
+start_hour <- 483
 
 data_fluo <- data_all_fluo |> filter(hour >= start_hour)
 
@@ -357,3 +348,7 @@ if (exists("ftp_dnn")){
 
 ggsave(filename = paste0("results/fluo/fluo_", timepoint, ".png"), plot = plot_fluotp,
        width = 17, height = 15, dpi = 1000, units = "cm")
+
+# Save plot for publication
+ggsave(filename = paste0("results/fluo/fluo_", timepoint, ".pdf"), plot = plot_fluotp,
+       width = 5, height = 4.5)

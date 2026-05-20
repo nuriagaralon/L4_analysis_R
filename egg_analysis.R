@@ -470,3 +470,10 @@ for(egg_var in names(egg_list)){
   # Finish saving results
   sink()
 }
+
+# Arrange plots for publication
+egg_argd <- ggarrange(egg_eh_plot, egg_count_plot,
+                      labels = c("A","B"),
+                      widths = c(1, 1.5))
+ggsave(filename = "results/egg/egg_argd.pdf", plot = egg_argd,
+       width = 10, height = 4.5)

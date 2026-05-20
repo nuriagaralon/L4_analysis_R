@@ -80,7 +80,7 @@ if(length(path_surv) > 1){
   # We need to match first what comes first. Since control is
   # N2 | OP50 100 % | Water 10 %, we match N2, OP50 100, and Water, in that order
   control <- paste(c("N2", "OP50 100", "Water"), collapse = ".*") # [CUSTOM]
-
+  
   # Takes the experiment ID from the file name (expID_survival...)
   # from the beginning up until and including the first _
   cont_tab <- map2(all_tables, str_extract(basename(path_surv), "^[^_]+_"),
@@ -120,6 +120,9 @@ if(length(path_surv) > 1){
 # Combines all tables from all_tables into one, uses surv_pivot function
 table_surv <- bind_rows(all_tables)
 data_surv <- surv_pivot(table_surv)
+
+# [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
+data_surv <- data_surv |> filter(!str_detect(condition, "FUdR"))
 
 # Plot survival: Kaplan-Meier and Log-rank test
 # Test and plot ALL conditions
@@ -207,3 +210,9 @@ g_to_save <- ggsave_workaround(surv_plot_set)
 
 ggsave(filename = "results/survival/survival_set.png", plot = g_to_save,
        width = 25, height = 13, dpi = 1000, units = "cm")
+
+# Arrange plots for publication
+all_ggsave <- ggsave_workaround(surv_plot_all)
+survival_argd <- ggarrange(all_ggsave, g_to_save, labels = c("A", "B"))
+ggsave(filename = "results/survival/survival_argd.pdf", plot = survival_argd,
+       width = 10, height = 5)

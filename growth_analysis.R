@@ -821,7 +821,12 @@ if (exists("tp_dnt_volume_mod")){
 ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp_volume,
        width = 17, height = 17, dpi = 1000, units = "cm")
 
-
+# Arrange plots for publication	   
+growth_argd <- ggarrange(length_ggplot, area_ggplot, volume_ggplot, tp_length, tp_area, tp_volume,
+                         labels = c("A", "B", "C", "D", "E", "F"),
+                         ncol = 3, nrow = 2, common.legend = TRUE)
+ggsave(filename = "results/growth/growth_argd.pdf", plot = growth_argd,
+       width = 10, height = 8)
 
 
 # [UNFINISHED] NLME OR GNLS MODEL
