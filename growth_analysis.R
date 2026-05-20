@@ -599,7 +599,7 @@ for(growth_var in names(growth_params_list)){
   sink()
 }
 
-# Comparison 3: Compare a certain time point
+# [CUSTOM] Comparison 3: Compare a certain time point
 timepoint <- 80 #Hour
 
 # Summarise at timepoint (keep replicates separate)
