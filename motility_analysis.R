@@ -386,7 +386,7 @@ for(name in dataset_names){
 
 # Arrange plots for publication
 motility_argd <- ggarrange(ha_plot, ta_plot, ds_plot, bf_plot,
-						   labels = c("A", "B", "C", "D"),
-						   common.legend = TRUE)
+						   labels = "AUTO", common.legend = TRUE)
+               
 ggsave(filename = "results/motility/motility_argd.pdf", plot = motility_argd,
        width = 10, height = 8)

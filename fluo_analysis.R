@@ -163,6 +163,9 @@ htmlwidgets::saveWidget(as_widget(fluo_hour_plotly), "results/fluo/fluo_FC_hour.
 timepoint <- 485 #Hour
 sig_pval <- 0.05
 
+# Remove previous post-hoc testing objects for new timepoint
+rm(list = ls(pattern = "^ftp_(dnt|dnn|thsd)"))
+
 # Allows wider lines and enough rows when saving statistics results to text file
 options(width = 1000)
 options(max.print = 2000)

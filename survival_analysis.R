@@ -213,6 +213,6 @@ ggsave(filename = "results/survival/survival_set.png", plot = g_to_save,
 
 # Arrange plots for publication
 all_ggsave <- ggsave_workaround(surv_plot_all)
-survival_argd <- ggarrange(all_ggsave, g_to_save, labels = c("A", "B"))
+survival_argd <- ggarrange(all_ggsave, g_to_save, labels = "AUTO")
 ggsave(filename = "results/survival/survival_argd.pdf", plot = survival_argd,
        width = 10, height = 5)

@@ -602,6 +602,9 @@ for(growth_var in names(growth_params_list)){
 # [CUSTOM] Comparison 3: Compare a certain time point
 timepoint <- 80 #Hour
 
+# Remove previous post-hoc testing objects for new timepoint
+rm(list = ls(pattern = "^tp_(dnt|dnn|thsd)"))
+
 # Summarise at timepoint (keep replicates separate)
 data_timepoint <- data_gro |>
   filter(hour == timepoint) |>
@@ -738,6 +741,10 @@ extract_comp_from_cond <- function(comparison, condition_levels){
 }
 
 # Function to plot
+# [CUSTOM] occasionally, the significance stars don't fit in the plot. 
+# This offset moves them down, take care to check the y axis scale.
+y_offset <- 0
+
 plot_signif <- function(tp_posthoc_var, plot_var, error_var){
   # 1. Get the sig_data
   # If it comes from Dunnett's test, we need to add sig stars
@@ -785,7 +792,7 @@ plot_signif <- function(tp_posthoc_var, plot_var, error_var){
   # 5. Build geom_signif for ggplot
   plot_tp <- geom_signif(comparison = comparisons,
                          annotations = sig_data$p.adj.signif,
-                         y_position = y_positions,
+                         y_position = y_positions - y_offset,
                          tip_length = 0.01)
   plot_tp
 }
@@ -797,6 +804,7 @@ plot_signif <- function(tp_posthoc_var, plot_var, error_var){
 
 # [CUSTOM] Change area_mod, length_mod, volume_mod to area, length, volume
 # if statistical analysis was done with raw data in um.
+# That includes objects like tp_dnt_area_mod -> tp_dnt_area
 # Also change ylabs. Change lab_amod, lab_lmod, lab_vmod to lab_a, lab_l, lab_v
 
 tp_area <- plot_timepoint(mean_area_mod, sem_area_mod) + ylab(lab_amod)
@@ -823,10 +831,10 @@ ggsave(filename = paste0("results/growth/volume_", timepoint, ".png"), plot = tp
 
 # Arrange plots for publication	   
 growth_argd <- ggarrange(length_ggplot, area_ggplot, volume_ggplot, tp_length, tp_area, tp_volume,
-                         labels = c("A", "B", "C", "D", "E", "F"),
-                         ncol = 3, nrow = 2, common.legend = TRUE)
+                         labels = "AUTO",
+                         ncol = 2, nrow = 3, common.legend = TRUE)
 ggsave(filename = "results/growth/growth_argd.pdf", plot = growth_argd,
-       width = 10, height = 8)
+       width = 8, height = 11)
 
 
 # [UNFINISHED] NLME OR GNLS MODEL
