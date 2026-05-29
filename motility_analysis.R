@@ -41,57 +41,26 @@ table_mot <- bind_rows(table_mot)
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
 table_mot <- table_mot |> filter(!str_detect(condition, "FUdR"))
 
-# [CUSTOM] Do we want to use worms as replicates? What about channels?
-# CAUTION: worms as replicates does not work well with ANOVA.
-worm_rep <- FALSE
+# [CUSTOM] Do we want to use channels as replicates? 
 channels <- TRUE
-
-# [CUSTOM] Filter worms with less than 10 measurements (useful when using worm as replicate)
-# Can change filter_number
-
-# The problem with using worms as replicates is that, if they do not have all the values,
-# there are problems afterwards with the ANOVA: it will remove the replicates that 
-# don't have data for all timepoints.
-
-if(worm_rep){
-  filter_number <- 10
-
-  valid_worms <- table_mot |>
-      group_by(exp_id, chip, channel, chamber, worm_id) |>
-      summarise(worm_id_count = n(), .groups = "drop") |>
-      filter(worm_id_count >= filter_number)
-
-  data_mot <- table_mot |> inner_join(valid_worms, by = c("exp_id", "chip", "channel", "chamber", "worm_id"))
-  data_mot <- data_mot |> select(-worm_id_count)
-} else {
-  data_mot <- table_mot
-}
 
 # Set what is the replicate
 if(length(path_mot) > 1){
-  if(worm_rep){
-    rep_cols <- c("exp_id", "chip", "channel", "chamber", "worm_id")
-    replicate <- "Modelled using worm as replicate"
-  } else if (channels) {
+  if (channels) {
     rep_cols <- c("exp_id", "chip", "channel")
     replicate <- "Modelled using experiment-chip-channel as replicate."
   } else if (!channels) {
     rep_cols <- c("exp_id", "condition")
     replicate <- "Modelled using experiment as replicate."
   }
-# If only one file, replicate ID is the chip_channel combination, or the worm
+# If only one file, replicate ID is the chip_channel combination
 } else if (length(path_mot) == 1) {
-  if(worm_rep){
-    rep_cols <- c("chip", "channel", "chamber", "worm_id")
-    replicate <- "Modelled using worm as replicate"
-  } else {
   rep_cols <- c("chip", "channel")
   replicate <- "Modelled using chip-channel as replicate."
-  }
 }
 
 # Sort data table
-data_mot <- data_mot |>
+data_mot <- table_mot |>
   mutate(
     rep_id = pmap_chr(across(all_of(rep_cols)), ~ paste(..., sep = "_")),
     day = ceiling(time / (60 * 60 * 24)),

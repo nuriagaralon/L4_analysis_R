@@ -20,7 +20,6 @@ library(DescTools)
 library(rstatix)
 library(ggpubr)
 library(ggsci)
-#library(nlme) #[O], explained later
 
 # Create results directory
 dir.create("results/growth", showWarnings = FALSE, recursive = TRUE)
@@ -864,67 +863,3 @@ growth_argd <- ggarrange(length_ggplot, area_ggplot, volume_ggplot, tp_length, t
                          ncol = 2, nrow = 3, common.legend = TRUE)
 ggsave(filename = "results/growth/growth_argd.pdf", plot = growth_argd,
        width = 8, height = 11)
-
-
-# [UNFINISHED] NLME OR GNLS MODEL
-# An nlme model or gnls model is needed for official LRT testing, but it is a lot of parameters
-# and a lot of work, and it is difficult for it to converge. Therefore, it is difficult to set up
-# generalized modeling for any and all kinds of experiments.
-# Might be worth looking into it if the previous testing is not enough
-
-#nlme
-# data_gro <- data_gro |>
-#   mutate(subject = map2_chr(condition, rep_id, ~ paste(.x, .y, sep = ".")))
-# 
-# start_values <- fit_area |>
-#   select(condition, model) |>
-#   ungroup() |>
-#   mutate(start_vals = map(model, coef)) |>
-#   mutate(diff = map(start_vals, ~ .x - baseline)) |>
-#   mutate(named_vals = map2(start_vals, condition, ~ set_names(.x, paste(names(.x), .y, sep = ".")))) |>
-#   pull(named_vals) |>
-#   unlist()
-# 
-## Unfinished nlme
-# model <- nlme(area_mod ~ A / (1 + exp(-B * (hour - C))),
-#               fixed = A + B + C ~ condition,
-#               random = A + B + C ~ 1 | subject,
-#               data = data_gro,
-#               start = start_values)
-
-#gnls
-#comp_area <- fit_area |>
-#  select(condition, model) |>
-#  ungroup() |>
-#  mutate(start_vals = map(model, coef))
-#
-## Get start values
-#control <- "Water"
-#
-#baseline <- comp_area |>
-#  filter(str_detect(condition, control)) |>
-#  pull(start_vals) |>
-#  pluck(1)
-#
-#start_values <- comp_area |>
-#  filter(!str_detect(condition, control)) |>
-#  mutate(diff = map(start_vals, ~ .x - baseline)) |>
-#  mutate(named_vals = map2(start_vals, condition, ~ set_names(.x, paste(names(.x), .y, sep = ".")))) |>
-#  pull(named_vals) |>
-#  unlist()
-#
-#start_values <- c(baseline, start_values)
-#
-## Get null model
-#null_data <- data_gro |>
-#    group_by(hour) |>
-#    summarise(
-#        mean = mean(area_mod),
-#        sd = sd(area_mod),
-#        n = n(),
-#        .groups = "drop"
-#    )
-## Unfinished gnls
-#area_null <- gnls(area_mod ~ A / (1 + exp(-B * (hour - C))),
-#                    data = data_gro,
-#                    start = baseline)
