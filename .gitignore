@@ -1,5 +1,6 @@
 .Rhistory
 .Rproj.user
 results
-data
 .positai
+data/*
+!data/fluo_chambers_use.xlsx
