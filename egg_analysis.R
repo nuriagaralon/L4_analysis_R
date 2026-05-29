@@ -270,6 +270,9 @@ egg_eh_plot <- ggplot(egg_eh, aes(x = condition, y = mean, color = condition)) +
     scale_x_discrete(guide = guide_axis(angle = 90)) + # [CUSTOM] Change to change angle of labels of x axis
     labs(x = "", y = "Egg emergence (hours)") # [CUSTOM] Change to change the x, y axis labels
 
+# [CUSTOM] egge_dnt plots Dunnet values and can be changed to 
+# egge_thsd for Tukey significant values
+# egge_dnn for Dunn significant values
 if (exists("egge_dnt")){
   egg_eh_plot <- egg_eh_plot + plot_signif(egge_dnt, "mean", "sem", "Emergence hour_mean")
 }

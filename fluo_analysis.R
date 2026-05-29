@@ -344,7 +344,9 @@ plot_fluotp <- ggplot(data_fluotp_plot, aes(x = condition, y = fc_mean, color = 
     scale_x_discrete(guide = guide_axis(angle = 90)) + # [CUSTOM] Change to change angle of labels of x axis
     labs(x = "", y = "Fluorescence (Fold Change vs control)") # [CUSTOM] Change to change the x, y axis labels
 
-# Use ftp_dnt, ftp_dnn, ftp_thsd
+# [CUSTOM] ftp_dnt plots Dunnet values and can be changed to 
+# ftp_thsd for Tukey significant values
+# ftp_dnn for Dunn significant values
 if (exists("ftp_dnn")){
   plot_fluotp <- plot_fluotp + plot_signif(ftp_dnn, "fc_mean", "fc_sem", "fold_change_m")
 }

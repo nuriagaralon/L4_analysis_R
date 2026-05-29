@@ -32,7 +32,6 @@ if(length(path_mot) < 1){
 }
 
 # Load excel file
-# Selects only area, volume, length (and not eccentricity, orientation, etc.)
 table_mot <- map(path_mot, function(path){
   read_excel(path, col_names = TRUE) |> mutate(exp_id = str_extract(basename(path), "^[^_]+"))
 })
@@ -43,6 +42,7 @@ table_mot <- bind_rows(table_mot)
 table_mot <- table_mot |> filter(!str_detect(condition, "FUdR"))
 
 # [CUSTOM] Do we want to use worms as replicates? What about channels?
+# CAUTION: worms as replicates does not work well with ANOVA.
 worm_rep <- FALSE
 channels <- TRUE
 

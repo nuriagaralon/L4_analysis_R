@@ -109,14 +109,18 @@ data_gro <- data_gro |>
   )
 
 # [CUSTOM] Filter out FUdR data. Can be removed or changed for another condition
-data_gro <- data_gro |> filter(!str_detect(condition, "FUdR"))
+filter_cond <- "FUdR"
+data_gro <- data_gro |> filter(!str_detect(condition, filter_cond))
 
 # [CUSTOM] Filter out from wiz file, where they starved for a weekend
-data_gro <- data_gro |>
-  filter(!(str_detect(rep_id, "wiz6YHzJUXFL") & hour >= 395))
+filter_expid <- "wiz6YHzJUXFL"
+filter_hour <- 395
 
-if(length(path_gro) == 1 && str_detect(path_gro, "wiz6YHzJUXFL")) {
-  data_gro <- data_gro |> filter(hour < 395)
+data_gro <- data_gro |>
+  filter(!(str_detect(rep_id, filter_expid) & hour >= filter_hour))
+
+if(length(path_gro) == 1 && str_detect(path_gro, filter_expid)) {
+  data_gro <- data_gro |> filter(hour < filter_hour)
 }
 
 
@@ -174,7 +178,7 @@ growth_sigmoid <- function(dataset, column){
               )} else {m}
           }),
       # Calculate values for y for each x according to the model, for plotting
-      fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
+      fitted = map2(model, data, ~ {if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))}),
 
       # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
       r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
@@ -234,14 +238,16 @@ if(any(map_lgl(volume_data$model, is.null))){
 #              )} else {m}
 #          }),
 #      # Calculate values for y for each x according to the model, for plotting
-#      fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
+#      fitted = map2(model, data, ~ {if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))}),
 #
 #      # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
 #      r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
 #    )
+## End of [O]
 
 # Plot and save plotly
 # [CUSTOM] Here you can change ylabs. If plotting area, length, volume,
+# instead of area_mod, length_mod, volume_mod
 # change lab_amod, lab_lmod, lab_vmod to lab_a, lab_l, lab_v
 area_ggplot <- plot_sigmoid(area_data) + ylab(lab_amod)
 area_plotly <- ggplotly(area_ggplot)
@@ -262,7 +268,7 @@ htmlwidgets::saveWidget(as_widget(volume_plotly), "results/growth/growth_volume.
 # [CUSTOM] significant p-value to check normality, check for post-hoc tests
 sig_pval <- 0.05
 
-# [CUSTOM] Set control variable: Detects "Water"
+# [CUSTOM] Set control variable: Detects "Water", can change to detect something else
 condition_levels <- levels(data_gro$condition)
 control <- condition_levels[str_detect(condition_levels, fixed("Water"))]
 
@@ -437,7 +443,7 @@ growth_params <- function(growth_summ_data){
             )} else {m}
         }),
     # Calculate fitted values
-    fitted = map2(model, data, ~ if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))),
+    fitted = map2(model, data, ~ {if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))}),
     
     # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
     r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
@@ -472,6 +478,29 @@ volume_params_fit <- growth_params(volume_summ)
 if(any(map_lgl(volume_params_fit$model, is.null))){
   stop("One of the volume models is NULL, please rerun with a different C_start (try value_for_c = 40)")
 }
+
+## [O] If the model did not converge, change placeholder (for example, to volume_params_fit). 
+## Can also change the value_for_c. It might also not converge.
+#value_for_c <- 40
+#placeholder <- placeholder |>
+#    mutate(
+#      C_start = if_else(map_lgl(model, is.null), value_for_c, C_start),
+#      model = pmap(list(model, data, A_start, B_start, C_start), function(m, df, A, B, C){
+#              if (is.null(m)) {
+#              tryCatch(
+#                  nls(mean ~ A / (1 + exp(-B * (h_nr - C))),
+#                      data = df,
+#                      start = list(A = A, B = B, C = C)),
+#                  error = function(e) NULL
+#              )} else {m}
+#          }),
+#      # Calculate values for y for each x according to the model, for plotting
+#      fitted = map2(model, data, ~ {if (!is.null(.x)) predict(.x, newdata = .y) else rep(NA, nrow(.y))}),
+#
+#      # We compute R2 to see if they fit similarly. It is not, however, a way to compare fits.
+#      r2 = map2(data, fitted, ~ 1 - sum((.x$mean - .y)^2)/sum((.x$mean-mean(.x$mean))^2))
+#    )
+## End of [O]
 
 # Plot the replicates separately to see:
 # NOT plotting data points (there are too many)
