@@ -9,7 +9,7 @@ The following is a tutorial on the usage of this R project.
 - Remember to add the data as detailed in **Data files**.
 
 > [!NOTE]
-> This document **complements** the code documentation. Make sure to check the [CUSTOM] tags for each script before running the analyses, as they tailor your analysis to your needs.
+> This document **complements** the code documentation. Make sure to check the `[CUSTOM]` tags for each script before running the analyses, as they tailor your analysis to your needs.
 
 
 ## Installation
@@ -64,7 +64,7 @@ We must check whether the following ANOVA assumptions are met. For this, we depe
 If this assumption is not met, use the **Kruskal-Wallis** results.
 
 2. Equality of variances: the scale-location plot (left) must have randomly distributed points. 
-    - Usually, it the blue line is roughly horizontal, the assumption is met. 
+    - Usually, if the blue line is roughly horizontal, the assumption is met. 
     - Sometimes, the blue line is not horizontal due to one or two outliers. In this case, 
     - It is not met if, for example, we observe a pattern, such as a funnel or parabola.
 
@@ -92,13 +92,13 @@ And shows the survival plot, where we can spot, for example, if worms died unexp
 ### Survival Results
 Survival results can be found in the `results/survival` folder.
 
-#### Visualization plots:
--	survival.html : Interactive Kaplan-Meier plot of all curves. Can have confidence intervals calculated as log(survival estimate).
--	survival_set.html : Interactive Kaplan-Meier plot of a specified subset of curves. Can have confidence intervals calculated as log(survival estimate).
--   survival_set.png : Image version of the subset of curves
+#### Visualization plots
+-	`survival.html` : Interactive Kaplan-Meier plot of all curves. Can have confidence intervals calculated as log(survival estimate).
+-	`survival_set.html` : Interactive Kaplan-Meier plot of a specified subset of curves. Can have confidence intervals calculated as log(survival estimate).
+-   `survival_set.png` : Image version of the subset of curves
 
 #### Publication-ready plot
-- survival_argd.pdf : shows plot of all curves and subset of curves.
+- `survival_argd.pdf` : shows plot of all curves and subset of curves.
 
 ## Growth analysis
 
@@ -106,7 +106,7 @@ Survival results can be found in the `results/survival` folder.
 The following steps include detailed explanations for some customizable parts, marked with `[CUSTOM]` within the R script. Those which are easier to explain have documentation within the code.
 
 #### Normalization
-When the flag `normalize` is `TRUE`; area, volume and length are normalized by dividing them with `area.t0avg`, `volume.t0avg` and `length.t0avg`, which are calculated from the first six hours (first video, step < 7>) for each condition of each experiment ID.
+When the flag `normalize` is `TRUE`; area, volume and length are normalized by dividing them with `area.t0avg`, `volume.t0avg` and `length.t0avg`, which are calculated from the first six hours (first video, step < 7) for each condition of each experiment ID.
 
 #### Convergence problems
 Growth curves are modelled as a sigmoidal curve:
@@ -152,32 +152,32 @@ This is a rather simple customization. However, setting the control variable is 
 > By default, it searches the condition that contains "Water", and if it does not find it, it will likely raise the error: `! object 'p.adj.signif' not found`
 
 ### Growth Results
-Growth results can be found in the `results/growth` folder. Since we always have each file in triplicate (for area, length, and volume) we will use [variable] as the placeholder. **Please check ANOVA section to correctly interpret the results.**
+Growth results can be found in the `results/growth` folder. Since we always have each file in triplicate (for area, length, and volume) we will use `[variable]` as the placeholder. **Please check ANOVA section to correctly interpret the results.**
 
 #### Visualization plots:
--	growth_[variable].html : Interactive plot of [variable] vs Time (hour). Values are averaged per each hour before modeling the logistic growth curve.
--	growth_[variable]_rep.html : Interactive plot of [variable] vs Time (h_nr, hour). Values are raw before modeling the logistic growth curves for every replicate. Data points are not shown. Here we can visualize if the replicates are different from each other.
+-	`growth_[variable].html` : Interactive plot of `[variable]` vs Time (hour). Values are averaged per each hour before modeling the logistic growth curve.
+-	`growth_[variable]_rep.html` : Interactive plot of `[variable]` vs Time (h_nr, hour). Values are raw before modeling the logistic growth curves for every replicate. Data points are not shown. Here we can visualize if the replicates are different from each other.
 
 #### AUC testing
 Tests differences in area under the growth curve with numerical integration
--	[variable]_normality_AUC.png : ANOVA assumption plots 
--	growth_AUC_[variable].txt : statistical test results
+-	`[variable]_normality_AUC.png` : ANOVA assumption plots 
+-	`growth_AUC_[variable].txt` : statistical test results
 
 #### Parameters (A, B, C) testing
 Tests differences in logistic growth curves parameters
--	[variable]_normality_A.png : ANOVA assumption plots for parameter A
--	[variable]_normality_B.png : ANOVA assumption plots for parameter B
--	[variable]_normality_C.png : ANOVA assumption plots for parameter C
--	growth_params_[variable].txt : statistical test results for all parameters
+-	`[variable]_normality_A.png` : ANOVA assumption plots for parameter A
+-	`[variable]_normality_B.png` : ANOVA assumption plots for parameter B
+-	`[variable]_normality_C.png` : ANOVA assumption plots for parameter C
+-	`growth_params_[variable].txt` : statistical test results for all parameters
 
-#### Timepoint testing:
-Tests differences of [variable] (or variable_mod) at a specific [timepoint], which is 80 hours by default.
--	[variable]_normality_[timepoint].png : ANOVA assumption plots
--	growth_[timepoint]_[variable].txt : statistical test results
--	[variable]_[timepoint].png: plot [variable] at [timepoint] vs condition. Error bars are mean $\pm$ SEM. Significance stars are taken from Dunnett's test results. Can be changed to be Tukey's HSD or Dunn's test. 
+#### Timepoint testing
+Tests differences of `[variable]` (or variable_mod) at a specific `[timepoint]`, which is 80 hours by default.
+-	`[variable]_normality_[timepoint].png` : ANOVA assumption plots
+-	`growth_[timepoint]_[variable].txt` : statistical test results
+-	`[variable]_[timepoint].png` : plot `[variable]` at `[timepoint]` vs condition. Error bars are mean $\pm$ SEM. Significance stars are taken from Dunnett's test results. Can be changed to be Tukey's HSD or Dunn's test. 
 
 #### Publication-ready plot
-- growth_argd.pdf : shows length, area, volume growth curves and timepoint plots
+- `growth_argd.pdf` : shows length, area, volume growth curves and timepoint plots
 
 ## Fertility analysis
 
@@ -194,26 +194,26 @@ If there is only one experiment to analyse, it must be the `eggs_channel` file.
 ### Fertility Results
 Fertility results can be found in the `results/egg` folder. **Please check ANOVA section to correctly interpret the results.**
 
-#### Visualization plots:
--	egg_count.html : Interactive plot of normalized egg counts (A.U.) vs Time (days). Normalized egg counts are mean_eggs_per_worm/total_eggs for each condition. 
+#### Visualization plots
+-	`egg_count.html` : Interactive plot of normalized egg counts (A.U.) vs Time (days). Normalized egg counts are mean_eggs_per_worm/total_eggs for each condition. 
 
 #### Egg count differences
 Tests differences in the maximum egg count, the maximum normalized egg count and the time of this maximum egg laying.
--	egg_norm_normality.png : ANOVA assumption plots of maximum normalized egg count
--   egg_count_egg_norm.txt : statistical test results of maximum normalized egg count
--   mean_eggs_per_worm_normality.png :  ANOVA assumption plots of maximum egg count
--   egg_count_mean_eggs_per_worm.txt : statistical test results of maximum egg count
--   Hour_normality.png:  ANOVA assumption plots of time of maximum egg count
--   egg_count_Hour.txt : statistical test results of time of maximum egg count
+-	`egg_norm_normality.png` : ANOVA assumption plots of maximum normalized egg count
+-   `egg_count_egg_norm.txt` : statistical test results of maximum normalized egg count
+-   `mean_eggs_per_worm_normality.png` :  ANOVA assumption plots of maximum egg count
+-   `egg_count_mean_eggs_per_worm.txt` : statistical test results of maximum egg count
+-   `Hour_normality.png`:  ANOVA assumption plots of time of maximum egg count
+-   `egg_count_Hour.txt` : statistical test results of time of maximum egg count
 
 #### Egg emergence
 Tests differences in time of first egg emergence.
--	egg_emergence_normality.png : ANOVA assumption plots
--   egg_emergence.txt : statistical test results
--   egg_emergence_plot.png : time of first egg emergence vs condition. Error bars are mean $\pm$ SEM. Significance stars are taken from Dunnett's test results. Can be changed to be Tukey's HSD or Dunn's test. 
+-	`egg_emergence_normality.png` : ANOVA assumption plots
+-   `egg_emergence.txt` : statistical test results
+-   `egg_emergence_plot.png` : time of first egg emergence vs condition. Error bars are mean $\pm$ SEM. Significance stars are taken from Dunnett's test results. Can be changed to be Tukey's HSD or Dunn's test. 
 
 #### Publication-ready plot
-- egg_argd.pdf : shows egg emergence and egg count plots
+- `egg_argd.pdf` : shows egg emergence and egg count plots
 
 ## Motility analysis
 
@@ -241,20 +241,20 @@ Sphericity is an assumption of two-way ANOVA that can be corrected by:
 This corrects the p-values to control false positives.
 
 ### Motility Results
-Motility results can be found in the `results/motility` folder. Since we always have each file in quadruplicate (for head amplitude, tail amplitude, displacement speed and bodybends frequency) we will use [variable] as the placeholder. **Please check ANOVA section to correctly interpret the results.**
+Motility results can be found in the `results/motility` folder. Since we always have each file in quadruplicate (for head amplitude, tail amplitude, displacement speed and bodybends frequency) we will use `[variable]` as the placeholder. **Please check ANOVA section to correctly interpret the results.**
 
-#### Visualization plots:
--	motility_[variable].html : Interactive plot of [variable] vs Time (day). Error bars are mean $\pm$ SEM. 
+#### Visualization plots
+-	`motility_[variable].html` : Interactive plot of `[variable]` vs Time (day). Error bars are mean $\pm$ SEM. 
 
 #### Motility over time
-Tests differences in [variable] over time (days) with a two-way ANOVA. [filltype] refers to how the data was treated (see in Running the analysis above).
--	young_[variable]_normality.png : ANOVA assumption plots for young worms (1-10 days)
--	motility_[filltype]_[variable]_young.txt : statistical test results for young worms (1-10 days)
--	old_[variable]_normality.png : ANOVA assumption plots for old worms (11-20 days)
--	motility_[filltype]_[variable]_old.txt : statistical test results for old worms (11-20 days)
+Tests differences in `[variable]` over time (days) with a two-way ANOVA. `[filltype]` refers to how the data was treated (see in Running the analysis above).
+-	`young_[variable]_normality.png` : ANOVA assumption plots for young worms (1-10 days)
+-	`motility_[filltype]_[variable]_young.txt` : statistical test results for young worms (1-10 days)
+-	`old_[variable]_normality.png` : ANOVA assumption plots for old worms (11-20 days)
+-	`motility_[filltype]_[variable]_old.txt` : statistical test results for old worms (11-20 days)
 
 #### Publication-ready plot
-- motility_argd.pdf : shows head amplitude, tail amplitude, displacement speed and bodybends frequency plots
+- `motility_argd.pdf` : shows head amplitude, tail amplitude, displacement speed and bodybends frequency plots
 
 ## Fluorescence analysis
 
@@ -277,17 +277,17 @@ Chosen chambers should contain only one worm, as fluorescence intensity is not d
 Initial fluorescence readings are often artificially high. Therefore, the `initial_check.html` plot is created to see when it stabilizes. Set `start_hour` as the hour when it first stabilizes.
 
 ### Fluorescence Results
-Growth results can be found in the `results/growth` folder. Since we always have each file in triplicate (for area, length, and volume) we will use [variable] as as the placeholder. **Please check ANOVA section to correctly interpret the results.**
+Growth results can be found in the `results/growth` folder. Since we always have each file in triplicate (for area, length, and volume) we will use `[variable]` as as the placeholder. **Please check ANOVA section to correctly interpret the results.**
 
-#### Visualization plots:
--	initial_check.html : Interactive plot of Fluorescence Intensity vs Time (hour). Shows at what hour the measurements stabilize.
--	fluo_FC_hour.html : Interactive plot of Fluorescence Fold Change vs Time (h_nr, hour). Error bars are mean $\pm$ sd. Helps select interesting timepoint.
+#### Visualization plots
+-	`initial_check.html` : Interactive plot of Fluorescence Intensity vs Time (hour). Shows at what hour the measurements stabilize.
+-	`fluo_FC_hour.html` : Interactive plot of Fluorescence Fold Change vs Time (h_nr, hour). Error bars are mean $\pm$ sd. Helps select interesting timepoint.
 
-#### Timepoint testing:
-Tests differences of fluorescence fold change at a specific [timepoint].
--	fluo_[timepoint]_normality.png : ANOVA assumption plots
--	fluo_[timepoint].txt : statistical test results
--	fluo_[timepoint].png: plot fluorescence fold change at [timepoint] vs condition. Error bars are mean $\pm$ SEM. Significance stars are taken from Dunnett's test results. Can be changed to be Tukey's HSD or Dunn's test. 
+#### Timepoint testing
+Tests differences of fluorescence fold change at a specific `[timepoint]` .
+-	`fluo_[timepoint]_normality.png` : ANOVA assumption plots
+-	`fluo_[timepoint].txt` : statistical test results
+-	`fluo_[timepoint].png` : plot fluorescence fold change at `[timepoint]` vs condition. Error bars are mean $\pm$ SEM. Significance stars are taken from Dunnett's test results. Can be changed to be Tukey's HSD or Dunn's test. 
 
 #### Publication-ready plot
-- fluo_[timepoint].pdf : fluo_[timepoint].png in pdf form
+- `fluo_[timepoint].pdf` : `fluo_[timepoint].png` in pdf form
