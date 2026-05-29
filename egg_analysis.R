@@ -25,7 +25,7 @@ dir.create("results/egg", showWarnings = FALSE, recursive = TRUE)
 # General raw data is confusing so we are using aggregated data
 # [CUSTOM] Do we want to use channel as a replicate?
 # If channel is true, it will take "eggs_channel" file/s
-# If condition is true, it will take "eggs_condition" files
+# If channel is false, it will take "eggs_condition" files
 # If we only have one file to analyse, we need it to be "eggs_channel"
 channel <- TRUE
 
