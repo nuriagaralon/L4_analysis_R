@@ -110,9 +110,8 @@ When the flag `normalize` is `TRUE`; area, volume and length are normalized by d
 
 #### Convergence problems
 Growth curves are modelled as a sigmoidal curve:
-$$
-\text{growth}(t) = \dfrac{A}{1 + e^{-B(t - C)}}
-$$
+
+$$\text{growth}(t) = \dfrac{A}{1 + e^{-B(t - C)}}$$
 
 <div align="center">
   <img src="documentation/images/sigmoid.png" alt="sigmoid curve" width="70%">
