@@ -52,13 +52,13 @@ if(normalize){
   lab_lmod <- "Length (A. U.)"
   lab_vmod <- "Volume (A. U.)"
 } else {
-  lab_amod <- "Area (mm\u00b2)" # mm²
+  lab_amod <- "Area (mm\u00b2)" # mm^2
   lab_lmod <- "Length (mm)"
-  lab_vmod <- "Volume (mm\u00b3)" # mm³
+  lab_vmod <- "Volume (mm\u00b3)" # mm^3
 }
-lab_a <- "Area (\u03bcm\u00b2)"  # μm²
-lab_l <- "Length (\u03bcm)"  # μm
-lab_v <- "Volume (\u03bcm\u00b3)"  # μm³
+lab_a <- "Area (\u03bcm\u00b2)"  # um^2
+lab_l <- "Length (\u03bcm)"  # um
+lab_v <- "Volume (\u03bcm\u00b3)"  # um^3
 
 
 # Takes the value at t0 of each condition for normalizing the data
