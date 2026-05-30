@@ -116,13 +116,10 @@ $$\text{growth}(t) = \dfrac{A}{1 + e^{-B(t - C)}}$$
 <div align="center">
   <img src="documentation/images/sigmoid.png" alt="sigmoid curve" width="70%">
   
-  *By Tristan Mahr (@tjmahr in Github)*
+  *Adapted from figure by Tristan Mahr (@tjmahr on GitHub)*
 </div>
 
-where:
-- $A$, orange: upper asymptote = maximum nematode growth
-- $B$, green: slope = growth rate
-- $C$, blue: inflexion point = time where the rate of growth is greatest (variations shift the curve along the x axis without changing shape). 
+where variations in $C$ shift the curve along the x axis without changing shape.
 
 Sometimes it is difficult for the model to converge, in which case the script will stop with a warning:
 >One of the area/length/volume models is NULL, please rerun with a different C_start (try value_for_c = 40)
